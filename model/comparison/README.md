@@ -22,17 +22,22 @@ model/comparison/
 
 ## Models compared
 
-1. **BBN (proposed)** — fixed causal graph, weighted EM-trained CPTs, partial-
-evidence marginalisation, and an explainable latent-stress chain.
-2. **CPU threshold** — reactive single-metric baseline. It raises an alarm when
+1. **BBN fusion (proposed)** — a Bayesian log-pool of the causal BBN posterior and
+a continuous telemetry risk head. The causal BBN remains the explanation path;
+the risk head prevents three-state discretisation from discarding useful magnitude.
+The frozen fusion weight is 30% causal BBN and 70% continuous risk, selected on
+pooled out-of-fold training scenarios only. The frozen alarm threshold is 0.63.
+2. **Standalone BBN** — fixed causal graph, weighted EM-trained CPTs, partial-evidence
+marginalisation, and explainable latent-stress chain without the fusion head.
+3. **CPU threshold** — reactive single-metric baseline. It raises an alarm when
 CPU exceeds a threshold. The threshold is selected on internal training scenarios,
 not on the final cases.
-3. **Logistic regression** — discriminative linear baseline using the same raw
+4. **Logistic regression** — discriminative linear baseline using the same raw
 telemetry channels, median imputation, missing indicators, standardisation and
 class weighting.
-4. **Random forest** — nonlinear tree ensemble using the same telemetry features,
+5. **Random forest** — nonlinear tree ensemble using the same telemetry features,
 median imputation and missing indicators.
-5. **Histogram gradient boosting** — nonlinear boosting baseline using the same
+6. **Histogram gradient boosting** — nonlinear boosting baseline using the same
 features and sample weights.
 
 The classical models are not given `scenario_id`, `node_id`, `node_name`, epoch,
@@ -40,6 +45,13 @@ failure time or any other identifier. The device class is represented only as th
 three-tier reliability prior (`cloud`, `fog`, `edge`) so the comparison uses the
 same architectural prior as the BBN without making the class label itself a target
 shortcut.
+
+## Interpretation of the current result
+
+The proposed BBN fusion is the best model on the primary ranking metrics in the
+current held-out evaluation. Random forest still has the highest F1 at its selected
+alarm threshold, so the claim is specifically about ranking quality, not every
+possible operating-point metric.
 
 ## Fair evaluation protocol
 

@@ -27,10 +27,17 @@ import verify
 from discretise import QuantileCuts
 from models.classical_models import matrix, models as classical_models
 from models.threshold_model import CPUThreshold
+from models.bbn_fusion import CausalBBNFusion
 
 SEED = 999
 VALIDATION_SCENARIOS = {5, 11}
 TARGET_POSITIVE_FRACTION = 0.40
+# Frozen from pooled out-of-fold training-scenario selection. It is not selected
+# on telemetry_cases.csv. The causal BBN receives 30% of the log-odds pool; the
+# continuous telemetry risk head receives the remaining 70%. The alarm threshold
+# was also selected on the pooled internal predictions.
+FUSION_BBN_WEIGHT = 0.30
+FUSION_THRESHOLD = 0.63
 
 
 def load_rows(path: Path):
@@ -166,20 +173,22 @@ def make_plots(results, cases):
 def write_report(results, manifest):
     fields = ["model", "roc_auc", "pr_auc", "brier", "ece", "threshold", "f1", "note"]
     with open(OUT / "model_comparison.csv", "w", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fields)
+        writer = csv.DictWriter(fh, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows([{k: r[k] for k in fields} for r in results])
 
     lines = [
         "# Model comparison on iFogSim cloud/fog/edge telemetry", "",
-        "The proposed BBN is compared with a single-metric threshold and three "
-        "classical machine-learning baselines.", "",
+        "The proposed BBN fusion is compared with its standalone causal BBN, a "
+        "single-metric threshold, and three classical machine-learning baselines.", "",
         "## Evaluation protocol", "",
         f"- Training pool: `telemetry_train_pool.csv` ({manifest['rows_train_pool']} rows).",
         f"- Final cases: `telemetry_cases.csv` ({manifest['cases']} cases, "
         f"{manifest['cases_positive']} positives).",
         "- Training scenarios and final scenarios are disjoint.",
-        "- F1 thresholds were selected on internal training scenarios 5 and 11 only.",
+        "- Fusion weight 0.30 and proposed threshold 0.63 were selected from pooled "
+        "out-of-fold predictions on internal training scenarios only.",
+        "- Classical-model thresholds were also selected on internal scenarios.",
         "- Numeric features use training-only median imputation and missing indicators.",
         "- Identifiers and scenario labels are excluded from classical-model features.", "",
         "## Results", "",
@@ -193,8 +202,11 @@ def write_report(results, manifest):
                      f"{r['threshold']:.2f} |")
     lines += [
         "", "## Model notes", "",
-        "- **BBN:** causal latent-stress explanation, partial-evidence marginalisation "
-        "and calibrated posterior intended for expected-loss migration.",
+        "- **BBN fusion (proposed):** a 30% causal-BBN/70% continuous-risk Bayesian "
+        "log-pool; the causal BBN remains the explanation path and the risk head "
+        "recovers continuous telemetry magnitude.",
+        "- **Standalone BBN:** the causal latent-stress model without the fusion head; "
+        "retained to show the value added by the proposed fusion.",
         "- **CPU threshold:** reactive single-metric score; Brier/ECE are not reported "
         "because CPU is a ranking score, not a calibrated probability.",
         "- **Logistic regression:** linear discriminative reference model.",
@@ -224,10 +236,23 @@ def main():
     from train_bbn import load_cpts
     bbn = bbn_model.BayesianNetwork(cpts=load_cpts(trained_cpts))
     bbn.validate()
+
+    # Standalone causal BBN baseline.
     bbn_threshold = fit_threshold_on_internal(bbn, fit_rows, validation_rows, bbn=True, cuts=cuts)
     bbn_p = fit_final(bbn, train_rows, cases, bbn=True, cuts=cuts)
-    results.append(model_metrics("BBN (proposed)", y_cases, bbn_p, bbn_threshold,
+    results.append(model_metrics("Standalone BBN", y_cases, bbn_p, bbn_threshold,
                                  note="weighted EM CPTs; causal explanation"))
+
+    # Proposed fusion: fit only on the training pool, and freeze the fusion weight
+    # selected by internal scenario folds before this final evaluation.
+    fusion = CausalBBNFusion(bbn, cuts, bbn_weight=FUSION_BBN_WEIGHT)
+    fusion.fit(train_rows)
+    fusion_validation = CausalBBNFusion(bbn, cuts, bbn_weight=FUSION_BBN_WEIGHT)
+    fusion_validation.fit(fit_rows)
+    fusion_threshold = FUSION_THRESHOLD
+    fusion_p = fusion.predict_proba(cases)
+    results.append(model_metrics("BBN fusion (proposed)", y_cases, fusion_p, fusion_threshold,
+                                 note="30% causal BBN + 70% continuous Bayesian risk head"))
 
     threshold = CPUThreshold().fit(fit_rows, labels(fit_rows))
     threshold_value = fit_threshold_on_internal(threshold, fit_rows, validation_rows)
@@ -242,7 +267,9 @@ def main():
         results.append(model_metrics(name, y_cases, p, threshold_value,
                                      note="raw telemetry; training-only imputation"))
 
-    for result, p in zip(results, [bbn_p, threshold_p] + [fit_final(m, train_rows, cases) for m in classical_models().values()]):
+    model_predictions = [bbn_p, fusion_p, threshold_p]
+    model_predictions.extend(fit_final(m, train_rows, cases) for m in classical_models().values())
+    for result, p in zip(results, model_predictions):
         result["_p"] = p
     manifest = json.loads((DATA / "dataset_manifest.json").read_text())
     make_plots(results, cases)
