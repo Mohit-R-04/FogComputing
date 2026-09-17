@@ -1,0 +1,23 @@
+# Python environments and caches
+model/.venv/
+.venv/
+**/__pycache__/
+**/.pytest_cache/
+*.pyc
+
+# Java build output
+ifogsim/build/
+ifogsim/out/
+
+# Upstream iFogSim sample binaries and generated demo output
+ifogsim/output/
+ifogsim/results/
+
+# Local IDE and OS files
+.DS_Store
+.idea/
+.vscode/
+
+# Local logs and temporary proof files
+*.log
+/tmp/

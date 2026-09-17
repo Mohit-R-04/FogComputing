@@ -1,0 +1,224 @@
+{
+  "seed": 999,
+  "scenarios_all": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "scenarios_train": [
+    0,
+    2,
+    3,
+    4,
+    5,
+    6,
+    11
+  ],
+  "scenarios_held_out": [
+    1,
+    7,
+    8,
+    9,
+    10
+  ],
+  "rows_train_pool": 50991,
+  "rows_train_sampled": 2000,
+  "rows_held_out": 38484,
+  "cases": 200,
+  "cases_positive": 80,
+  "channel_report": {
+    "overall": {
+      "cpu_util": {
+        "reported": 89475,
+        "coverage": 1.0,
+        "distinct": 247,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "ram_util": {
+        "reported": 89475,
+        "coverage": 1.0,
+        "distinct": 10,
+        "min": 0.0,
+        "max": 0.5
+      },
+      "queue_depth": {
+        "reported": 89475,
+        "coverage": 1.0,
+        "distinct": 711,
+        "min": 0.0,
+        "max": 1914204.0
+      },
+      "uplink_latency": {
+        "reported": 89475,
+        "coverage": 1.0,
+        "distinct": 3119,
+        "min": 0.0,
+        "max": 6820.0
+      },
+      "jitter_pktloss": {
+        "reported": 38450,
+        "coverage": 0.4297,
+        "distinct": 2483,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "handover_rate": {
+        "reported": 89475,
+        "coverage": 1.0,
+        "distinct": 6,
+        "min": 0.0,
+        "max": 5.0
+      },
+      "residual_energy": {
+        "reported": 89475,
+        "coverage": 1.0,
+        "distinct": 4475,
+        "min": 0.0492,
+        "max": 1.0
+      },
+      "temperature": {
+        "reported": 0,
+        "coverage": 0.0,
+        "distinct": 0,
+        "min": null,
+        "max": null
+      },
+      "reliability_prior": {
+        "reported": 89475,
+        "coverage": 1.0,
+        "distinct": 3,
+        "min": 0.7,
+        "max": 0.99
+      }
+    },
+    "per_class": {
+      "cloud": {
+        "cpu_util": {
+          "distinct": 111,
+          "reported": 612
+        },
+        "ram_util": {
+          "distinct": 2,
+          "reported": 612
+        },
+        "queue_depth": {
+          "distinct": 336,
+          "reported": 612
+        },
+        "uplink_latency": {
+          "distinct": 311,
+          "reported": 612
+        },
+        "jitter_pktloss": {
+          "distinct": 38,
+          "reported": 584
+        },
+        "handover_rate": {
+          "distinct": 1,
+          "reported": 612
+        },
+        "residual_energy": {
+          "distinct": 270,
+          "reported": 612
+        },
+        "temperature": {
+          "distinct": 0,
+          "reported": 0
+        },
+        "reliability_prior": {
+          "distinct": 1,
+          "reported": 612
+        }
+      },
+      "edge": {
+        "cpu_util": {
+          "distinct": 101,
+          "reported": 22513
+        },
+        "ram_util": {
+          "distinct": 4,
+          "reported": 22513
+        },
+        "queue_depth": {
+          "distinct": 159,
+          "reported": 22513
+        },
+        "uplink_latency": {
+          "distinct": 2543,
+          "reported": 22513
+        },
+        "jitter_pktloss": {
+          "distinct": 1503,
+          "reported": 21007
+        },
+        "handover_rate": {
+          "distinct": 6,
+          "reported": 22513
+        },
+        "residual_energy": {
+          "distinct": 3942,
+          "reported": 22513
+        },
+        "temperature": {
+          "distinct": 0,
+          "reported": 0
+        },
+        "reliability_prior": {
+          "distinct": 1,
+          "reported": 22513
+        }
+      },
+      "fog": {
+        "cpu_util": {
+          "distinct": 41,
+          "reported": 66350
+        },
+        "ram_util": {
+          "distinct": 4,
+          "reported": 66350
+        },
+        "queue_depth": {
+          "distinct": 465,
+          "reported": 66350
+        },
+        "uplink_latency": {
+          "distinct": 266,
+          "reported": 66350
+        },
+        "jitter_pktloss": {
+          "distinct": 1298,
+          "reported": 16859
+        },
+        "handover_rate": {
+          "distinct": 1,
+          "reported": 66350
+        },
+        "residual_energy": {
+          "distinct": 1922,
+          "reported": 66350
+        },
+        "temperature": {
+          "distinct": 0,
+          "reported": 0
+        },
+        "reliability_prior": {
+          "distinct": 1,
+          "reported": 66350
+        }
+      }
+    },
+    "warnings": [
+      "reliability_prior takes only 3 distinct values \u2014 enough for a three-state encoding, but only just"
+    ]
+  }
+}

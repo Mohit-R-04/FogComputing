@@ -1,0 +1,13 @@
+# Core: needed to run the BBN and the verification suite.
+numpy>=1.26
+pandas>=2.0
+scikit-learn>=1.4
+matplotlib>=3.8
+
+# Testing.
+pytest>=8.0
+
+# Optional: only for crosscheck_pgmpy.py, which validates this project's own
+# inference engine against an independent implementation. Everything else runs
+# without it, and the cross-check skips cleanly when it is absent.
+pgmpy>=1.0
