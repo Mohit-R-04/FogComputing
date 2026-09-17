@@ -67,6 +67,7 @@ Dirichlet-smoothed expectation-maximisation.
 - `verify.py` — the verification suite → `results/verification_report.md`
 - `test_inference.py`, `crosscheck_pgmpy.py` — engine checks
 - `MODEL_IMPROVEMENTS.md` — methods, experiments, leakage controls and before/after metrics
+- `comparison/` — organized comparison with CPU threshold, logistic regression, random forest and histogram gradient boosting; see `comparison/results/model_comparison.md`
 
 ## Run
 
@@ -95,7 +96,7 @@ Or all of it in one go:
 bash run_all.sh
 ```
 
-Results land in `model/results/` — see `verification_report.md` for the metrics.
+Results land in `model/results/` — see `verification_report.md` for the BBN verification metrics. For comparisons with other models, see `model/comparison/results/model_comparison.md` and its diagrams.
 
 ## Known limitations
 
