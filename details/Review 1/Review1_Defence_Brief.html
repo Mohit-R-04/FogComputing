@@ -1,0 +1,762 @@
+<title>Review I Defence Brief</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+:root{
+  --ground:#F6F7FA;
+  --surface:#FFFFFF;
+  --surface-2:#EEF1F6;
+  --ink:#101B2E;
+  --ink-soft:#3A4761;
+  --muted:#66738C;
+  --rule:#D8DEE9;
+  --rule-soft:#E6EAF1;
+  --accent:#9C6115;
+  --accent-soft:#FBF3E6;
+  --accent-line:#E0C79A;
+  --green:#2C6E49;
+  --green-soft:#EAF3ED;
+  --red:#A63D40;
+  --red-soft:#FBEDED;
+  --say-bg:#FFFFFF;
+  --shadow:0 1px 2px rgba(16,27,46,.06), 0 8px 24px -12px rgba(16,27,46,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0C1220;
+    --surface:#141C2E;
+    --surface-2:#1B2438;
+    --ink:#E9EDF5;
+    --ink-soft:#BCC6D8;
+    --muted:#8593AC;
+    --rule:#2A3448;
+    --rule-soft:#212B3D;
+    --accent:#E0A44E;
+    --accent-soft:#231C10;
+    --accent-line:#5A4526;
+    --green:#7FC49B;
+    --green-soft:#132218;
+    --red:#E48A8C;
+    --red-soft:#241416;
+    --say-bg:#101828;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0C1220;
+  --surface:#141C2E;
+  --surface-2:#1B2438;
+  --ink:#E9EDF5;
+  --ink-soft:#BCC6D8;
+  --muted:#8593AC;
+  --rule:#2A3448;
+  --rule-soft:#212B3D;
+  --accent:#E0A44E;
+  --accent-soft:#231C10;
+  --accent-line:#5A4526;
+  --green:#7FC49B;
+  --green-soft:#132218;
+  --red:#E48A8C;
+  --red-soft:#241416;
+  --say-bg:#101828;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:16px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px 96px;}
+.cols{display:grid;grid-template-columns:1fr;gap:0;}
+@media(min-width:1040px){
+  .cols{grid-template-columns:210px minmax(0,1fr);gap:56px;align-items:start;}
+}
+main{max-width:74ch;min-width:0;}
+
+/* ---------- masthead ---------- */
+header.mast{padding:56px 0 30px;border-bottom:1px solid var(--rule);margin-bottom:38px;}
+.eyebrow{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11.5px;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--accent);font-weight:500;margin:0 0 16px;
+}
+h1{
+  font-family:Spectral,Georgia,serif;font-weight:700;
+  font-size:clamp(2rem,4.4vw,3.05rem);line-height:1.08;
+  letter-spacing:-.015em;margin:0 0 18px;text-wrap:balance;
+}
+.standfirst{font-size:1.12rem;color:var(--ink-soft);max-width:60ch;margin:0 0 26px;}
+.meta{
+  display:flex;flex-wrap:wrap;gap:10px 26px;
+  font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--muted);
+}
+.meta b{color:var(--ink-soft);font-weight:500;}
+
+/* ---------- nav rail ---------- */
+nav.rail{display:none;}
+@media(min-width:1040px){
+  nav.rail{
+    display:block;position:sticky;top:28px;padding-top:56px;
+    font-size:13.5px;line-height:1.45;
+  }
+  nav.rail ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;}
+  nav.rail a{
+    display:block;padding:5px 10px;border-left:2px solid var(--rule-soft);
+    color:var(--muted);text-decoration:none;transition:color .15s,border-color .15s;
+  }
+  nav.rail a:hover,nav.rail a:focus-visible{color:var(--accent);border-left-color:var(--accent);}
+  nav.rail .rail-h{
+    font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted);padding:16px 10px 6px;
+  }
+}
+
+/* ---------- sections ---------- */
+section{margin:0 0 58px;scroll-margin-top:24px;}
+h2{
+  font-family:Spectral,Georgia,serif;font-weight:600;
+  font-size:1.72rem;line-height:1.2;letter-spacing:-.01em;
+  margin:0 0 6px;text-wrap:balance;
+}
+.sec-num{
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);display:block;margin-bottom:9px;font-weight:500;
+}
+.lede{color:var(--ink-soft);margin:0 0 24px;font-size:1.02rem;max-width:64ch;}
+h3{
+  font-family:Spectral,Georgia,serif;font-weight:600;font-size:1.2rem;
+  margin:32px 0 8px;line-height:1.3;text-wrap:balance;
+}
+p{margin:0 0 14px;}
+main a{color:var(--accent);}
+
+/* ---------- the "say this" block: the core device ---------- */
+.say{
+  background:var(--say-bg);border:1px solid var(--accent-line);
+  border-left:3px solid var(--accent);border-radius:3px;
+  padding:20px 22px 18px;margin:18px 0 22px;box-shadow:var(--shadow);
+}
+.say .tag{
+  font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--accent);font-weight:500;
+  display:block;margin-bottom:11px;
+}
+.say p{
+  font-family:Spectral,Georgia,serif;font-size:1.09rem;line-height:1.58;
+  color:var(--ink);margin:0 0 12px;
+}
+.say p:last-child{margin-bottom:0;}
+.say em{font-style:italic;color:var(--accent);}
+
+.know{
+  border-top:1px solid var(--rule-soft);padding-top:14px;margin:16px 0 0;
+  font-size:.945rem;color:var(--ink-soft);
+}
+.know .tag{
+  font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--muted);display:block;margin-bottom:8px;
+}
+
+/* ---------- Q&A ---------- */
+.qa{border-top:1px solid var(--rule);padding:22px 0 6px;}
+.qa:first-of-type{border-top:none;}
+.q{
+  font-family:Spectral,Georgia,serif;font-weight:600;font-size:1.14rem;
+  line-height:1.35;margin:0 0 12px;display:flex;gap:12px;align-items:baseline;
+  text-wrap:balance;
+}
+.q .qmark{
+  font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent);
+  flex:none;font-weight:500;padding-top:2px;
+}
+.chip{
+  display:inline-block;font-family:"IBM Plex Mono",monospace;
+  font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+  padding:3px 8px;border-radius:2px;font-weight:500;vertical-align:2px;
+  white-space:nowrap;
+}
+.chip.certain{background:var(--red-soft);color:var(--red);border:1px solid var(--red);}
+.chip.likely{background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line);}
+.chip.sharp{background:var(--green-soft);color:var(--green);border:1px solid var(--green);}
+.chip-row{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 26px;}
+
+/* ---------- misc components ---------- */
+.eq{
+  font-family:"IBM Plex Mono",monospace;font-size:.94rem;
+  background:var(--surface-2);border:1px solid var(--rule-soft);border-radius:3px;
+  padding:14px 16px;margin:16px 0;overflow-x:auto;white-space:nowrap;
+  color:var(--ink);
+}
+.eq b{color:var(--accent);font-weight:500;}
+code{
+  font-family:"IBM Plex Mono",monospace;font-size:.88em;
+  background:var(--surface-2);padding:1.5px 5px;border-radius:2px;color:var(--ink-soft);
+}
+.tbl-scroll{overflow-x:auto;margin:20px 0;border:1px solid var(--rule);border-radius:3px;}
+table{border-collapse:collapse;width:100%;font-size:.895rem;min-width:600px;}
+th{
+  background:var(--ink);color:var(--ground);text-align:left;padding:11px 14px;
+  font-weight:600;font-size:.82rem;letter-spacing:.02em;
+}
+:root[data-theme="dark"] th{background:var(--surface-2);color:var(--ink);}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) th{background:var(--surface-2);color:var(--ink);}}
+td{padding:11px 14px;border-top:1px solid var(--rule-soft);vertical-align:top;color:var(--ink-soft);}
+td:first-child{color:var(--ink);font-weight:500;white-space:nowrap;}
+tbody tr:nth-child(even){background:var(--surface-2);}
+
+ul,ol{margin:0 0 16px;padding-left:22px;}
+li{margin-bottom:7px;}
+li::marker{color:var(--accent);}
+
+.card{
+  background:var(--surface);border:1px solid var(--rule);border-radius:3px;
+  padding:20px 22px;margin:16px 0;box-shadow:var(--shadow);
+}
+.card h4{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 10px;font-weight:500;
+}
+.grid2{display:grid;grid-template-columns:1fr;gap:16px;margin:20px 0;}
+@media(min-width:680px){.grid2{grid-template-columns:1fr 1fr;}}
+
+.warn{
+  background:var(--red-soft);border:1px solid var(--red);border-radius:3px;
+  padding:18px 20px;margin:18px 0;
+}
+.warn h4{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--red);margin:0 0 10px;font-weight:500;
+}
+.warn p:last-child,.warn ul:last-child{margin-bottom:0;}
+
+.novelty{
+  display:grid;grid-template-columns:auto 1fr;gap:0 16px;
+  border-top:1px solid var(--rule);padding:20px 0;align-items:start;
+}
+.novelty .n{
+  font-family:"IBM Plex Mono",monospace;font-weight:500;font-size:12px;
+  background:var(--ink);color:var(--ground);padding:4px 9px;border-radius:2px;
+  letter-spacing:.06em;
+}
+:root[data-theme="dark"] .novelty .n{background:var(--accent);color:#0C1220;}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .novelty .n{background:var(--accent);color:#0C1220;}}
+.novelty h3{margin:0 0 8px;}
+.novelty > div:last-child > *:last-child{margin-bottom:0;}
+
+footer{
+  border-top:1px solid var(--rule);margin-top:20px;padding-top:22px;
+  font-size:.87rem;color:var(--muted);
+}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px;}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;}}
+</style>
+
+<div class="wrap">
+<header class="mast">
+  <p class="eyebrow">UG Project Phase I &nbsp;·&nbsp; Review I &nbsp;·&nbsp; 20 August 2026</p>
+  <h1>Review I Defence Brief</h1>
+  <p class="standfirst">Everything the panel can reasonably ask, and what to say. Scripted answers where the wording matters, background where it doesn't.</p>
+  <div class="meta">
+    <span><b>Project</b> &nbsp;BBN-driven proactive fault tolerance in fog computing</span>
+    <span><b>Stage</b> &nbsp;Design only — no results claimed</span>
+  </div>
+</header>
+
+<div class="cols">
+<nav class="rail" aria-label="Contents">
+  <div class="rail-h">Contents</div>
+  <ol>
+    <li><a href="#pitch">The opening answer</a></li>
+    <li><a href="#problem">The problem</a></li>
+    <li><a href="#gap">The five papers</a></li>
+    <li><a href="#inference">Inference from the survey</a></li>
+    <li><a href="#why">Why a BBN — approach</a></li>
+    <li><a href="#solution">The three novelties</a></li>
+    <li><a href="#bbn">How a BBN works</a></li>
+    <li><a href="#threshold">The threshold answer</a></li>
+    <li><a href="#data">Dataset</a></li>
+    <li><a href="#eval">Evaluation</a></li>
+    <li><a href="#questions">Question bank</a></li>
+    <li><a href="#traps">Traps</a></li>
+    <li><a href="#glossary">Glossary</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ============ 1 ============ -->
+<section id="pitch">
+  <span class="sec-num">01 — Opening</span>
+  <h2>The answer to “tell us about your project”</h2>
+  <p class="lede">They will open with this. Have one clean paragraph ready and stop talking at the end of it — let them ask the next question rather than filling silence.</p>
+
+  <div class="say">
+    <span class="tag">Say this — 30 seconds</span>
+    <p>Fog computing puts computation close to IoT sensors so that latency-critical applications — cardiac monitoring, video surveillance — can meet their deadlines. But fog nodes are commodity hardware in uncontrolled environments, and they fail far more often than data-centre servers. <em>Every existing fault-tolerance mechanism in fog is reactive:</em> it detects a failure and then recovers, which costs exactly the latency the application cannot afford. We are using a Bayesian Belief Network to predict the probability that a fog node will fail before it does, and to use that probability to move critical services off the node in advance.</p>
+  </div>
+
+  <div class="say">
+    <span class="tag">If they ask you to expand — 2 minutes</span>
+    <p>We surveyed five fog fault-tolerance systems. Three are purely reactive — checkpointing, ACK retransmission, heartbeat failover. One is an optimisation-based placement scheme where reliability is only a static term in a fitness function. The closest to ours, FTAPA, does migrate proactively, but it triggers on a fixed threshold applied to a single health index, and the authors themselves say the threshold is hard to tune — too low and migration happens too late, too high and you migrate unnecessarily.</p>
+    <p>The reason a fixed threshold does not work is that node health is <em>latent</em>. You never observe it directly. You observe CPU, memory, latency, jitter, energy, handover rate — noisy, interdependent indicators, some of which go missing exactly when the node is in trouble. That is precisely the problem Bayesian Belief Networks were built for.</p>
+    <p>So our framework has three parts. A BBN infers the probability of failure within a look-ahead window from whatever telemetry is available. That probability feeds a placement utility and a migration rule based on expected loss rather than a threshold. And it feeds a replication scheme that gives standby capacity only to modules where risk and criticality are both high, instead of provisioning a backup for everything.</p>
+  </div>
+
+  <div class="know">
+    <span class="tag">What to know</span>
+    <p>If asked “what is the one sentence problem statement” — <em>no existing fog fault-tolerance mechanism quantifies the probability of imminent node failure under uncertainty, or uses that probability to drive placement, migration and redundancy decisions before the failure occurs.</em> That sentence is on slide 4 and in the paper abstract. Memorise it.</p>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="problem">
+  <span class="sec-num">02 — The problem</span>
+  <h2>Why this problem is worth solving</h2>
+  <p class="lede">The panel will test whether the problem is real or invented. The chain of reasoning below is what makes it real — be able to walk down it.</p>
+
+  <ol>
+    <li><b>Latency-critical IoT cannot use the cloud.</b> An ECG stream must be classified in tens of milliseconds; a tracked object leaves the frame before a distant data centre replies.</li>
+    <li><b>So we move computation to fog nodes</b> — gateways, routers, base stations, one or two hops from the sensor.</li>
+    <li><b>But fog nodes are unreliable.</b> Commodity hardware, uncontrolled environments, shared constrained uplinks, limited or battery power, and mobile users whose handovers continually reshape their load.</li>
+    <li><b>A failure on a fog node is worse than a failure in the cloud,</b> because there is no redundant power, cooling or network path, and because the application that was placed there was placed there precisely because it could not tolerate delay.</li>
+    <li><b>Failures are rarely instantaneous.</b> A node degrades — rising utilisation, thermal stress, queue build-up, link deterioration — before it becomes unresponsive.</li>
+    <li><b>That degradation window is an opportunity,</b> and current fog fault-tolerance research does not exploit it.</li>
+  </ol>
+
+  <div class="say">
+    <span class="tag">Say this — if asked “why not just use the cloud / more backups?”</span>
+    <p>Adding backups is what the existing work does, and it has two costs. The standby capacity is consumed whether or not a failure ever happens — the FTAPA authors list that as a standing limitation of their own design. And a backup still only helps <em>after</em> the failure: you pay the failover latency at the worst possible moment. We are trying to avoid paying it at all.</p>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="gap">
+  <span class="sec-num">03 — Literature</span>
+  <h2>The five papers, and how you differ from each</h2>
+  <p class="lede">Expect “how is your work different from paper X?” for at least one of these. Paper [5] is the dangerous one — it is closest to yours.</p>
+
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>Paper</th><th>What it does</th><th>Why yours is different</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>[1] Rajab &amp; Younis<br>2021</td>
+        <td>DWRR scheduling, dynamic checkpointing at CPU&nbsp;&gt;&nbsp;0.2, primary–backup replication</td>
+        <td>It checkpoints <i>after</i> a threshold trips and replicates everything. We predict before, and replicate selectively.</td>
+      </tr>
+      <tr>
+        <td>[2] Syed et al.<br>2022</td>
+        <td>SDN priority routing, ACK-based retransmission for vehicular networks</td>
+        <td>Its only recovery action is retransmission — no backup execution or state management at all. And it acts only once a message is already lost.</td>
+      </tr>
+      <tr>
+        <td>[3] Naim et al.<br>2016</td>
+        <td>Fog middleware, heartbeat monitoring, failover to a replicated backup</td>
+        <td>Heartbeat detects that a server has <i>already</i> stopped responding. It is detection, not prediction, and there is a single backup.</td>
+      </tr>
+      <tr>
+        <td>[4] Reyana et al.<br>2023</td>
+        <td>QoS-EO — hybrid PSO + ABC metaheuristic task placement</td>
+        <td>Reliability is a static term in a fitness function. It never estimates whether a specific node is about to fail. Also two metaheuristics in sequence is computationally heavy.</td>
+      </tr>
+      <tr>
+        <td>[5] Gupta &amp; Singh<br>2025</td>
+        <td>FTAPA — load-balanced node selection, plus proactive migration when a health index crosses a fault threshold</td>
+        <td><b>The important one.</b> It is genuinely proactive, but the trigger is a deterministic comparison against a tuned threshold on a scalar index, with no uncertainty attached and no ability to reason when telemetry is missing. And it reserves a backup node per microservice.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="say">
+    <span class="tag">Say this — “isn’t FTAPA already doing what you’re doing?”</span>
+    <p>FTAPA proved that acting early helps — we are building on that, not disputing it. The difference is what drives the decision. FTAPA computes a single health number and compares it to a threshold it has to tune. We compute a <em>probability</em> with a causal model, which gives us three things a threshold cannot: it still produces an answer when a telemetry channel drops out, it tells us <em>which</em> condition is driving the risk, and because it is a probability we can combine it with a cost and derive the migration threshold instead of tuning it.</p>
+  </div>
+
+  <div class="know">
+    <span class="tag">What to know</span>
+    <p>The one-line gap, if they want it compressed: <b>every surveyed system either reacts to a fault that already happened, or anticipates it with a fixed threshold on a directly observed metric. None of them represents node health as a latent variable with quantified uncertainty.</b></p>
+  </div>
+</section>
+
+<!-- ============ 3b ============ -->
+<section id="inference">
+  <span class="sec-num">03b — Inference</span>
+  <h2>What the survey, taken together, tells us</h2>
+  <p class="lede">The panel cares less about five summaries than about what you <em>concluded</em> from reading them. These six findings are the bridge from survey to design — know them as a set.</p>
+
+  <ol>
+    <li><b>Fault tolerance in fog is overwhelmingly reactive.</b> Three of five act only after detection — a missed heartbeat [3], an unacknowledged message [2], a threshold breach during execution [1]. Recovery latency lands at the worst moment.</li>
+    <li><b>Acting early demonstrably works.</b> FTAPA [5] reports reduced downtime from migrating ahead of failure. The principle is sound — you build on it, you don't dispute it.</li>
+    <li><b>But prediction is deterministic and single-metric.</b> [1] and [5] both reduce it to one scalar against a preset threshold, and both sets of authors name the tuning difficulty as an open limitation.</li>
+    <li><b>Node health is treated as directly observable.</b> Nobody models it as latent — inferred from noisy, interdependent, sometimes-absent indicators — even though a channel falls silent exactly when its node is degrading.</li>
+    <li><b>Redundancy is provisioned uniformly, not by risk.</b> A backup per task [1], per server [3], per microservice [5] — capacity consumed whether or not failure ever comes. [5] names this as a cost of its own design.</li>
+    <li><b>Reliability enters optimisation only as a static term.</b> QoS-EO [4] scores it in a fitness function but never estimates whether a given node will fail in a given interval.</li>
+  </ol>
+
+  <div class="say">
+    <span class="tag">Say this — “what did you conclude from your literature survey?”</span>
+    <p>Three things. First, the field is overwhelmingly reactive — most systems recover after detection, and pay the recovery latency exactly when the deadline matters. Second, the one paper that does act early, FTAPA, shows that acting early genuinely reduces downtime — so the principle is sound. Third, and this is the gap: every attempt at prediction reduces an inherently uncertain judgement to one number compared against a tuned threshold, and both papers that do it report the tuning as an unsolved problem. <em>Nobody treats node health as a latent variable with quantified uncertainty.</em> That is what pointed us at Bayesian networks.</p>
+  </div>
+</section>
+
+<!-- ============ 3c ============ -->
+<section id="why">
+  <span class="sec-num">03c — Approach</span>
+  <h2>Why a Bayesian Belief Network, and not something else</h2>
+  <p class="lede">Expect “why did you choose this approach?” — and expect them to name an alternative. The answer is that four requirements fall out of the problem, and only one method meets all four.</p>
+
+  <div class="card">
+    <h4>The four requirements</h4>
+    <ol>
+      <li><b>Works without a failure corpus</b> — no labelled fog failure dataset exists.</li>
+      <li><b>Survives partial telemetry</b> — must still decide when a channel drops out.</li>
+      <li><b>Emits a calibrated probability</b> — the decision rule multiplies it by a cost.</li>
+      <li><b>Is interpretable</b> — an operator must be able to act on the reason, not just the number.</li>
+    </ol>
+  </div>
+
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>Candidate</th><th>Meets?</th><th>Principal reason</th></tr></thead>
+    <tbody>
+      <tr><td>Fixed threshold rules</td><td>No</td><td>Single metric, no uncertainty, silent under missing telemetry, threshold hard to tune — fails 1, 2 and 3.</td></tr>
+      <tr><td>Metaheuristics (PSO, ABC, GA)</td><td>No</td><td>Optimises an assignment but never estimates whether a node will fail. Also heavy and parameter-sensitive.</td></tr>
+      <tr><td>Markov chains / fault trees</td><td>Partly</td><td>State-space explosion at this size; poor with partial evidence; static structure. Weber et al. [8] document BNs displacing exactly these.</td></tr>
+      <tr><td>ML classifiers / deep learning</td><td>Partly</td><td>Needs thousands of labelled failures; must impute the very channels whose absence is diagnostic; confidence scores are miscalibrated; opaque.</td></tr>
+      <tr><td><b>Bayesian Belief Network</b></td><td><b>Yes</b></td><td><b>Priors usable from day one; marginalises missing evidence; genuine calibrated posterior; causal chain explains each prediction.</b></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="say">
+    <span class="tag">Say this — “why not machine learning?”</span>
+    <p>Three reasons, and the second is the one that decides it. There is no labelled corpus of fog node failures to train on, whereas a Bayesian network can be seeded from published reliability priors and expert judgement and work from the first epoch. <em>A classifier needs a value in every input slot</em> — so when a telemetry channel goes silent it has to impute one, and a channel goes silent precisely because the node is in trouble. A Bayesian network marginalises over it instead. And our migration rule multiplies the output by a cost, so we need a real calibrated probability, which neural network confidence scores are famously not.</p>
+  </div>
+
+  <div class="know">
+    <span class="tag">What to know — if they push on Markov chains or fault trees</span>
+    <p>These are the classical reliability instruments, so a mechanically-minded panel member may raise them. The answer is on your side: Weber et al. [8], which is <i>in your reference list</i>, surveys a decade of work and concludes that Bayesian networks have displaced Markov chains, fault trees and Petri nets for dependability and maintenance — because they model complex heterogeneous systems, reason both predictively and diagnostically, and update incrementally as evidence arrives. Citing your own reference to answer the objection is a strong move.</p>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="solution">
+  <span class="sec-num">05 — Proposed work</span>
+  <h2>The three novelties</h2>
+  <p class="lede">If they ask “what is new here?”, give all three — a single novelty sounds thin for a final-year project, and the three are genuinely connected: one produces a probability, one spends it, one spends it more carefully.</p>
+
+  <div class="novelty">
+    <span class="n">N1</span>
+    <div>
+      <h3>BBN-based failure prediction engine</h3>
+      <p>A causal Bayesian Belief Network over fog-node telemetry infers <code>P(failure within Δt | evidence)</code>. Missing evidence is marginalised out rather than imputed. The model is diagnostic as well as predictive, so it reports which condition is driving the risk. Conditional probability tables start from literature priors and are refined online from observed outcomes.</p>
+    </div>
+  </div>
+
+  <div class="novelty">
+    <span class="n">N2</span>
+    <div>
+      <h3>Risk-aware placement and expected-loss migration</h3>
+      <p>The posterior enters a placement utility alongside latency and energy, weighted per application class. Migration is triggered when the expected loss from staying exceeds the cost of moving — a decision-theoretic rule, not a threshold. This is the strongest answer in the whole project; see section 07.</p>
+    </div>
+  </div>
+
+  <div class="novelty">
+    <span class="n">N3</span>
+    <div>
+      <h3>Criticality-aware selective replication</h3>
+      <p>Standby capacity is allocated in proportion to <code>risk × criticality</code>, in three tiers: warm standby for high-risk critical modules, checkpoint-only for intermediate risk, nothing for best-effort. Directly attacks the “backup reserved whether or not it is needed” cost that [1], [3] and [5] all carry.</p>
+    </div>
+  </div>
+
+  <div class="say">
+    <span class="tag">Say this — “which one is the main contribution?”</span>
+    <p>The Bayesian network is the core, because the other two only work once you have a calibrated probability rather than a binary alarm. But the framework is the contribution — a probability nobody acts on is not useful, and the expected-loss rule is what turns it into a decision.</p>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="bbn">
+  <span class="sec-num">06 — The technical core</span>
+  <h2>How a Bayesian Belief Network actually works</h2>
+  <p class="lede">This is the highest-risk area of the review. If one panel member knows probability, this is where they will probe. Be able to explain it without notes.</p>
+
+  <div class="say">
+    <span class="tag">Say this — “explain a Bayesian Belief Network”</span>
+    <p>It is a directed acyclic graph where each node is a random variable and each edge means one variable directly influences another. Each node carries a conditional probability table giving its distribution for every combination of its parents’ values. Because the graph encodes conditional independence, the full joint distribution factorises into the product of those local tables — which is what makes it tractable. Given evidence on some variables, you can compute the posterior distribution of any other variable by summing out the ones you did not observe.</p>
+  </div>
+
+  <h3>Our network has three tiers</h3>
+  <ul>
+    <li><b>Evidence (observed).</b> CPU utilisation, RAM utilisation, tuple queue depth, uplink latency, jitter and packet loss, residual energy, temperature, handover rate.</li>
+    <li><b>Latent conditions.</b> Computational stress, network degradation, energy stress, thermal stress. These are not measured — they are inferred.</li>
+    <li><b>Target.</b> Node failure within the horizon Δt, also conditioned on a node-reliability prior from the device class and its historical MTBF.</li>
+  </ul>
+  <p>Every variable is discretised to a small ordinal state space — typically <code>{low, medium, high}</code> — so the tables stay compact and readable.</p>
+
+  <h3>Why the factorisation matters</h3>
+  <p>With 13 variables at 3 states each, a full joint distribution would need roughly 1.6 million numbers. Factorised into local conditional tables over a sparse graph, it is a few hundred. That reduction is the whole reason Bayesian networks are usable, and it is a good thing to be able to state.</p>
+
+  <div class="eq">P(X₁ … X<sub>n</sub>) &nbsp;=&nbsp; <b>∏</b><sub>i</sub> &nbsp;P(X<sub>i</sub> | parents(X<sub>i</sub>))</div>
+
+  <h3>Inference under partial evidence — the key property</h3>
+  <p>If jitter is not reported this epoch, we do not guess a value for it. We sum over its possible states, weighted by its distribution, and the answer comes out as a slightly less sharp posterior:</p>
+  <div class="eq">P(F | e<sub>observed</sub>) &nbsp;=&nbsp; <b>Σ</b><sub>unobserved</sub> &nbsp;P(F, unobserved | e<sub>observed</sub>)</div>
+  <p>A classifier — SVM, neural network — cannot do this. It needs a value in every input slot, so you have to impute one, and imputing a value for a channel that went silent because the node is in trouble is exactly the wrong guess. This is the single most persuasive argument for the choice of model, so lead with it.</p>
+
+  <h3>Where the numbers come from</h3>
+  <ul>
+    <li><b>Structure:</b> from domain knowledge — which conditions plausibly cause failure — not learned from data, because we have no failure corpus to learn it from.</li>
+    <li><b>Initial CPTs:</b> seeded from the reliability literature in our own reference list (Weber et al. on dependability, Fenton et al. on reliability prediction, Pang &amp; Abramov on IoT reliability) and expert elicitation over the device classes in the topology.</li>
+    <li><b>Refinement:</b> Bayesian parameter learning with Dirichlet priors. Dirichlet is conjugate to the categorical distribution, so updating after observing outcomes is just adding counts — cheap enough to do online every epoch.</li>
+  </ul>
+
+  <div class="know">
+    <span class="tag">What to know — if pressed on CPT size</span>
+    <p>The failure node has five parents at three states, so a full table is 3⁵ = 243 rows. That is the largest table in the network; the latent nodes have two or three parents each, so 9–27 rows. If it grows, the standard remedy is a <b>noisy-OR</b> (or noisy-MAX) formulation, which reduces the parameter count from exponential to linear in the number of parents. Naming noisy-OR unprompted signals you understand the limitation.</p>
+  </div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="threshold">
+  <span class="sec-num">07 — The best answer you have</span>
+  <h2>“How do you choose the migration threshold?”</h2>
+  <p class="lede">This question is almost certain, because every paper you surveyed struggles with it. Your answer is that you do not choose one — it falls out of the costs. Deliver this well and it will carry the review.</p>
+
+  <p>Migrating a running module is not free: it costs bandwidth, a brief service interruption, and possibly a worse host. So compare the expected loss of the two actions.</p>
+  <div class="eq">E[loss | stay] &nbsp;=&nbsp; P(fail | e) · C<sub>fail</sub> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; E[loss | migrate] &nbsp;≈&nbsp; C<sub>migrate</sub></div>
+  <p>Migrate when staying is worse:</p>
+  <div class="eq"><b>P(fail | e) · C<sub>fail</sub> &nbsp;&gt;&nbsp; C<sub>migrate</sub></b></div>
+  <p>Rearranged, the effective threshold on the probability is:</p>
+  <div class="eq">P* &nbsp;=&nbsp; C<sub>migrate</sub> &nbsp;/&nbsp; C<sub>fail</sub></div>
+
+  <div class="say">
+    <span class="tag">Say this</span>
+    <p>We do not tune a threshold. The threshold is <em>derived</em> — it is just the ratio of the cost of migrating to the cost of failing. A module whose failure is cheap tolerates a high failure probability before we move it; a module whose failure is expensive gets moved on much weaker evidence. So every module effectively gets its own threshold, and it comes from the application’s own cost structure rather than from us picking a number.</p>
+  </div>
+
+  <div class="know">
+    <span class="tag">What to know — the follow-up</span>
+    <p>If they ask <b>“how do you get C<sub>fail</sub> and C<sub>migrate</sub> in the same units?”</b> — note that only the <i>ratio</i> matters, so any consistent normalised unit works. In our evaluation C<sub>fail</sub> comes from deadline violations weighted by application criticality plus expected recovery time; C<sub>migrate</sub> from state transfer volume over available bandwidth plus the interruption window plus the utility lost on the new node. We will run a sensitivity analysis over the ratio.</p>
+  </div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section id="data">
+  <span class="sec-num">08 — Dataset</span>
+  <h2>Dataset description</h2>
+  <p class="lede">This is an explicit assessment item, so expect it to be asked directly. Know the numbers.</p>
+
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>Source</th><th>What it contains</th></tr></thead>
+    <tbody>
+      <tr><td>edgeResources-melbCBD.csv</td><td>131 edge/fog resources in the Melbourne CBD — latitude, longitude, block, level, parent, type. A four-level hierarchy: cloud data centre → proxy → gateway → user.</td></tr>
+      <tr><td>usersLocation-melbCBD_1.csv</td><td>Real user mobility trace, 87 recorded positions.</td></tr>
+      <tr><td>random_usersLocation_1–5</td><td>Five synthetic mobility traces, 100 positions each, from the iFogSim2 random mobility generator.</td></tr>
+      <tr><td>Application models</td><td>Cardiovascular health monitoring; intelligent surveillance (motion detector → object detector → object tracker → PTZ); VR game (EEG → client → concentration calculator → coordinator).</td></tr>
+      <tr><td>ApplicationConfig.json</td><td>Ten microservice profiles — per-module MIPS, inter-module network load, per-hop latency, throughput and budget constraints.</td></tr>
+      <tr><td>Injected failures</td><td>Synthetic node failures from our fault-injection harness, conditioned on simulated load, energy and link state. Provides ground truth for scoring predictions.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="warn">
+    <h4>Be ready for this — it is the weakest point in the project</h4>
+    <p>There is <b>no public fog-node failure trace</b> for this topology. Do not hide it; state it first, before they find it.</p>
+  </div>
+
+  <div class="say">
+    <span class="tag">Say this — “where is your failure data?”</span>
+    <p>There is no public failure dataset for a fog topology of this kind — that is a real limitation and we state it in the paper. So failures are injected synthetically by a harness we are adding to iFogSim2, and the conditional probability tables are seeded from the reliability literature before being adapted online. If a real fog failure trace becomes available, validating against it is stated future work.</p>
+  </div>
+
+  <div class="know">
+    <span class="tag">What to know — the sharp follow-up</span>
+    <p>If they say <b>“isn’t that circular — you inject failures with a model and then predict them with a model?”</b>, this is the answer: the two models are deliberately different in form. The harness fails nodes using a hazard function over the simulator’s <i>internal</i> state. The BBN never sees that — it only sees telemetry, which is sampled, discretised, delayed and sometimes missing. We also plan to test model mismatch on purpose, by injecting with a process whose structure the network does not assume, and we report calibration rather than just accuracy. This is standard practice in reliability simulation when field traces do not exist.</p>
+  </div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section id="eval">
+  <span class="sec-num">09 — Evaluation</span>
+  <h2>How you will prove it works</h2>
+  <p class="lede">You have no results yet, and that is correct for Review I. What you must have is a credible plan.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>Prediction quality</h4>
+      <ul>
+        <li>Precision, recall, F1 of failure prediction within Δt</li>
+        <li>Calibration — does a stated 0.7 actually fail 70% of the time</li>
+        <li><b>Lead time</b> — the interval between the decision rule firing and the actual failure</li>
+        <li>Robustness with telemetry channels deliberately withheld</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>System quality</h4>
+      <ul>
+        <li>Mean and tail application loop delay</li>
+        <li>Deadline-violation ratio for critical loops</li>
+        <li>Energy across cloud, fog and device tiers</li>
+        <li>Network usage, execution cost, service downtime</li>
+        <li>Redundancy overhead — reserved standby capacity</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="know">
+    <span class="tag">What to know — why lead time is the metric that matters</span>
+    <p>A prediction that arrives 50&nbsp;ms before a failure is worthless if migration takes 200&nbsp;ms. Accuracy alone does not capture that. Saying this unprompted shows you have thought past the textbook metrics — it is a genuinely good thing to volunteer.</p>
+  </div>
+
+  <h3>Baselines</h3>
+  <ol>
+    <li>Cloud-only placement</li>
+    <li>iFogSim2 edgeward placement, no fault tolerance</li>
+    <li>Reactive checkpointing with primary–backup replication — paper [1]</li>
+    <li>Threshold-based proactive migration — FTAPA, paper [5]</li>
+  </ol>
+  <p>Baseline 4 is the one that matters: it isolates the contribution of <i>probabilistic inference</i> from the contribution of merely <i>acting early</i>. Say that explicitly — it shows the comparison is designed to be hard on yourselves.</p>
+</section>
+
+<!-- ============ 9 ============ -->
+<section id="questions">
+  <span class="sec-num">10 — Question bank</span>
+  <h2>Everything else they might ask</h2>
+  <p class="lede">Triaged by how likely each is. Study the red ones until fluent; skim the green ones so you are not blindsided.</p>
+
+  <div class="chip-row">
+    <span class="chip certain">Near certain</span>
+    <span class="chip likely">Likely</span>
+    <span class="chip sharp">If they’re sharp</span>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span class="qmark">Q</span>Why a Bayesian network and not machine learning or deep learning? <span class="chip certain">Near certain</span></p>
+    <p><i>Full answer in section 03c.</i> Four reasons, in order of strength. <b>Data:</b> a neural network needs thousands of labelled failures, and no such corpus exists for fog — a BBN can be seeded from expert knowledge and literature priors and still function on day one. <b>Missing evidence:</b> a BBN marginalises; a classifier needs imputation. <b>Interpretability:</b> we get the causal chain driving the risk, which an operator can act on. <b>Calibration:</b> our decision rule multiplies the output by a cost, so we need a genuine probability — neural network confidence scores are famously miscalibrated. Add that our own reference [10] takes the deep-learning route for IoT reliability, so we are aware of the alternative and chose against it deliberately.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span class="qmark">Q</span>What have you actually completed so far? <span class="chip certain">Near certain</span></p>
+    <p>Be precise and do not overstate. Literature survey of five fog fault-tolerance systems plus the BBN reliability foundations. iFogSim2 environment set up and running, with baseline fog-versus-cloud simulations executed for the VR game and surveillance applications across five scaling configurations. Problem formulation and framework design complete, and the paper drafted. The BBN implementation itself is Phase II — that is the plan, not a slip.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span class="qmark">Q</span>Why iFogSim2 and not a real testbed? <span class="chip likely">Likely</span></p>
+    <p>A real fog testbed with enough nodes to observe meaningful failure statistics is beyond an undergraduate project’s resources, and you cannot induce failures on production hardware. iFogSim2 gives us the three things the evaluation needs — mobility from real traces, microservice orchestration, dynamic clustering — plus reproducibility. It is the standard tool in this literature, built on CloudSim.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span class="qmark">Q</span>What is a microservice here, and what does migration actually move? <span class="chip likely">Likely</span></p>
+    <p>An application is a directed graph of modules connected by edges carrying tuples — in iFogSim2 terms, <code>AppModule</code> and <code>AppEdge</code>, with <code>AppLoop</code> defining the paths whose latency we measure. A microservice is one such module placed on one fog device. Migration moves the module instance and its accumulated state to another device and re-routes the tuple flows to it; for a stateless module it is re-instantiation, and for a stateful one the state transfer is what dominates the migration cost.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span class="qmark">Q</span>What if the prediction is wrong? <span class="chip likely">Likely</span></p>
+    <p>Both error types are real and they are not symmetric. A <b>false positive</b> costs one unnecessary migration — bandwidth and a brief interruption. A <b>false negative</b> costs an unhandled failure. The expected-loss rule already encodes that asymmetry: because we multiply by C<sub>fail</sub>, we accept more false positives for modules where failure is expensive. That is a deliberate design property, not an accident.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span class="qmark">Q</span>What is the overhead of running inference every epoch? <span class="chip sharp">If they’re sharp</span></p>
+    <p>The network is small — around 13 variables in a layered, nearly-polytree structure — so exact inference by variable elimination is on the order of milliseconds. It runs once per node per decision epoch at the proxy tier, not per tuple. We will measure and report controller overhead as one of the system metrics rather than assuming it away.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span class="qmark">Q</span>Your controller is a single point of failure. <span class="chip sharp">If they’re sharp</span></p>
+    <p>Correct, and worth conceding immediately. Three mitigations. The controller holds no critical state between epochs except the CPTs, which are synchronised to a cloud repository, so a replacement can start with current knowledge. Fog nodes fall back to their last known placement if the controller is unreachable, so the system is fail-safe rather than fail-stop. And distributed inference across clustered fog nodes is explicit future work — iFogSim2’s clustering support is what makes it feasible.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span class="qmark">Q</span>Why discretise? Doesn’t that throw away information? <span class="chip sharp">If they’re sharp</span></p>
+    <p>Yes, it does. Three responses. Bin edges are chosen from data quantiles rather than arbitrarily. Three states are sufficient because the output feeds a coarse decision — we need a probability, not a precise CPU figure. And Fenton et al., who are in our reference list, developed <b>dynamic discretisation</b> exactly for this problem, refining bins in the region of interest — that is our stated upgrade path.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span class="qmark">Q</span>A static BBN has no notion of time, but degradation is temporal. <span class="chip sharp">If they’re sharp</span></p>
+    <p>A genuinely good question and one to concede cleanly. The current model gives a posterior per epoch. We partially compensate by including trend-derived evidence — rate of change, queue growth — rather than only instantaneous values. The correct full answer is a <b>Dynamic Bayesian Network</b>, which models the evolution of state across time slices, and that is named as future work in the paper.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span class="qmark">Q</span>What about correlated failures — a whole rack or uplink going down? <span class="chip sharp">If they’re sharp</span></p>
+    <p>A naive network assumes conditional independence given parents, which correlated failures violate. But the fix is natural in this formalism: add a shared-cause latent node — cluster power or uplink health — as a common parent of the affected nodes. Expressing shared causes is one of the things Bayesian networks are actually good at, so it is an extension rather than a redesign.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span class="qmark">Q</span>How do you set the criticality weight κ? Isn’t it arbitrary? <span class="chip sharp">If they’re sharp</span></p>
+    <p>It is not ours to invent — it comes from the application’s service class, set by whoever owns the application, the same way QoS tiers are assigned in any prioritised system. For our evaluation we derive it from deadline tightness and consequence of loss: health monitoring highest, surveillance next, VR game lowest. We will report a sensitivity analysis over κ rather than claiming one setting is correct.</p>
+  </div>
+
+  <div class="qa">
+    <p class="q"><span class="qmark">Q</span>Did you learn the graph structure or assume it? <span class="chip sharp">If they’re sharp</span></p>
+    <p>Assumed, from domain knowledge, because structure learning needs a substantial observational dataset that does not exist here. We validate it two ways: by expert review of the causal claims, and by sensitivity analysis — checking whether the posterior is unreasonably sensitive to any single edge or prior. Structure learning becomes possible once enough operational data has been accumulated through the online adaptation loop.</p>
+  </div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="traps">
+  <span class="sec-num">11 — Traps</span>
+  <h2>Things not to say</h2>
+
+  <div class="warn">
+    <h4>Avoid these</h4>
+    <ul>
+      <li><b>Do not quote results you do not have.</b> Review I is design-only. If asked “how much does it improve things?”, say the evaluation is Phase II and describe the metrics instead. Inventing a number is the fastest way to lose the panel.</li>
+      <li><b>Do not say “we use AI” or “we use machine learning”</b> vaguely. Say <i>Bayesian inference</i> or <i>probabilistic graphical model</i>. The vague phrasing invites exactly the questions you least want.</li>
+      <li><b>Do not say the network “learns from our dataset.”</b> You have no failure dataset. Say priors from literature, refined online from observed outcomes.</li>
+      <li><b>Do not oversell against FTAPA.</b> It is a real contribution and acting early is its idea. Position yours as adding uncertainty quantification on top, not as replacing it.</li>
+      <li><b>Do not guess when you do not know.</b> Say “we haven’t finalised that — our current thinking is X.” Panels reward a bounded honest answer and punish confident invention.</li>
+    </ul>
+  </div>
+
+  <div class="say">
+    <span class="tag">Say this — if genuinely stuck</span>
+    <p>That is not something we have settled yet. Our current thinking is <em>[X]</em>, and it is on the list for Phase II — could we come back to you on it?</p>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="glossary">
+  <span class="sec-num">12 — Reference</span>
+  <h2>Terms you must be able to define on the spot</h2>
+
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>Term</th><th>One-line definition</th></tr></thead>
+    <tbody>
+      <tr><td>Bayesian Belief Network</td><td>A directed acyclic graph of random variables where edges encode direct dependence and each node carries a conditional probability table.</td></tr>
+      <tr><td>CPT</td><td>Conditional probability table — the distribution of a node for every combination of its parents’ states.</td></tr>
+      <tr><td>Posterior</td><td>The updated probability of a variable after evidence is taken into account, as opposed to the prior.</td></tr>
+      <tr><td>Marginalisation</td><td>Summing a joint distribution over the variables you did not observe, to get the distribution of the ones you care about.</td></tr>
+      <tr><td>Conditional independence</td><td>A node is independent of its non-descendants given its parents — the property that makes the factorisation valid.</td></tr>
+      <tr><td>Variable elimination</td><td>An exact inference algorithm that sums out non-query variables one at a time; what we use.</td></tr>
+      <tr><td>Dirichlet prior</td><td>The conjugate prior for a categorical distribution — makes online CPT updating a matter of adding counts.</td></tr>
+      <tr><td>Noisy-OR</td><td>A compact CPT parameterisation reducing parameters from exponential to linear in the number of parents.</td></tr>
+      <tr><td>Calibration</td><td>Whether a stated probability matches observed frequency; distinct from accuracy.</td></tr>
+      <tr><td>Latent variable</td><td>A variable that is never directly observed and must be inferred — node health, in our case.</td></tr>
+      <tr><td>Fog computing</td><td>A tier of compute between IoT devices and the cloud, placed one or two network hops from the sensors.</td></tr>
+      <tr><td>Microservice / AppModule</td><td>One independently placeable unit of an application, connected to others by tuple-carrying edges.</td></tr>
+      <tr><td>AppLoop</td><td>An iFogSim2 path through modules whose end-to-end latency is measured — the thing that has a deadline.</td></tr>
+      <tr><td>MTBF</td><td>Mean time between failures — the historical reliability prior for a device class.</td></tr>
+      <tr><td>Proactive vs reactive FT</td><td>Proactive acts before failure on a prediction; reactive acts after detection.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<footer>
+  <p>Deck now follows the SSN template (15 slides). Companion to <b>Review1_Presentation.pptx</b> and <b>Review1_ResearchPaper.docx</b>. Problem statement, novelties and evaluation plan here match those documents exactly — if you change one, change all three.</p>
+</footer>
+
+</main>
+</div>
+</div>

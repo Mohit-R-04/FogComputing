@@ -1,0 +1,17 @@
+# Core: needed to run the BBN, the comparison suite and the experiment runners.
+numpy>=1.26
+pandas>=2.0
+scipy>=1.11
+scikit-learn>=1.4
+matplotlib>=3.8
+
+# Terminal demonstration (tables, progress bars, live event feed).
+rich>=13.0
+
+# Testing.
+pytest>=8.0
+
+# Optional: only for crosscheck_pgmpy.py, which validates this project's own
+# inference engine against an independent implementation. Everything else runs
+# without it, and the cross-check skips cleanly when it is absent.
+pgmpy>=1.0

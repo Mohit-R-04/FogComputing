@@ -1,0 +1,156 @@
+{
+ "design": {
+  "train_scenarios": [
+   0,
+   2,
+   3,
+   4,
+   5,
+   6,
+   11
+  ],
+  "test_scenarios": [
+   1,
+   7,
+   8,
+   9,
+   10
+  ],
+  "train_seeds": [
+   101,
+   102,
+   103
+  ],
+  "test_seeds": [
+   201,
+   202
+  ],
+  "sim_time": 10000,
+  "horizon": 200.0
+ },
+ "train": {
+  "rows": 314323,
+  "positives": 1508,
+  "prevalence": 0.0048,
+  "runs": 21,
+  "by_class": {
+   "cloud": {
+    "rows": 2121,
+    "positives": 0
+   },
+   "edge": {
+    "rows": 81657,
+    "positives": 472
+   },
+   "fog": {
+    "rows": 230545,
+    "positives": 1036
+   }
+  },
+  "failed_nodes": 754,
+  "failure_causes": {
+   "wear-out": 486,
+   "battery": 143,
+   "sudden": 125
+  }
+ },
+ "test": {
+  "rows": 160823,
+  "positives": 422,
+  "prevalence": 0.00262,
+  "runs": 10,
+  "by_class": {
+   "cloud": {
+    "rows": 1010,
+    "positives": 0
+   },
+   "edge": {
+    "rows": 47304,
+    "positives": 72
+   },
+   "fog": {
+    "rows": 112509,
+    "positives": 350
+   }
+  },
+  "failed_nodes": 211,
+  "failure_causes": {
+   "wear-out": 139,
+   "sudden": 61,
+   "battery": 11
+  }
+ },
+ "channels_train": {
+  "cpu_util": {
+   "coverage": 1.0,
+   "distinct": 8108
+  },
+  "ram_util": {
+   "coverage": 1.0,
+   "distinct": 12
+  },
+  "queue_depth": {
+   "coverage": 1.0,
+   "distinct": 1098
+  },
+  "uplink_latency": {
+   "coverage": 1.0,
+   "distinct": 45745
+  },
+  "jitter_pktloss": {
+   "coverage": 0.526,
+   "distinct": 4035
+  },
+  "handover_rate": {
+   "coverage": 1.0,
+   "distinct": 36
+  },
+  "residual_energy": {
+   "coverage": 1.0,
+   "distinct": 9888
+  },
+  "temperature": {
+   "coverage": 0.7402,
+   "distinct": 6504
+  },
+  "cpu_trend": {
+   "coverage": 0.9894,
+   "distinct": 10691
+  },
+  "queue_trend": {
+   "coverage": 0.9894,
+   "distinct": 15232
+  },
+  "latency_trend": {
+   "coverage": 0.9894,
+   "distinct": 6960
+  },
+  "temp_trend": {
+   "coverage": 0.7323,
+   "distinct": 17885
+  },
+  "energy_drain": {
+   "coverage": 0.9894,
+   "distinct": 1118
+  }
+ },
+ "leak_audit": {
+  "held_out_failures": 211,
+  "node_pairs_failing_in_test_and_train": 2070,
+  "same_epoch_share": 0.0198,
+  "same_epoch_share_before_fix": 0.921
+ },
+ "excluded_from_features": [
+  "case_id",
+  "scenario_id",
+  "seed",
+  "node_id",
+  "node_name",
+  "level",
+  "epoch",
+  "true_health",
+  "ground_truth_fail",
+  "failure_time",
+  "failure_cause"
+ ]
+}

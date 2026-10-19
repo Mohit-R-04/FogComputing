@@ -1,0 +1,19 @@
+{
+ "family": "ranked",
+ "trends": true,
+ "class_conditional": true,
+ "class_latent": true,
+ "cuts": "supervised",
+ "states": 8,
+ "per_class_cuts": true,
+ "concentration": 1.0,
+ "iterations": 60,
+ "lam": 0.02,
+ "structure_name": "ranked per-class k=8  lam=0.02 ",
+ "cv_log_loss": 0.010628631675358742,
+ "cv_roc_auc": 0.9165993755675133,
+ "cv_pr_auc": 0.7593992470609389,
+ "cv_brier": 0.0018161320252386467,
+ "cv_dropout_log_loss": 0.01575726215702533,
+ "selected_by": "pooled out-of-fold log-loss over 4 scenario folds of the training runs; ties within 1% broken by log-loss with 30% of channels withheld"
+}

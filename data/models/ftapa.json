@@ -1,0 +1,16 @@
+{
+ "format": "fog-ftapa/1",
+ "weights": {
+  "cpu_util": 0.4,
+  "queue_depth": 0.3,
+  "residual_energy": 0.15,
+  "temperature": 0.15
+ },
+ "norm": {
+  "queue_saturation": 120.0,
+  "temp_safe": 45.0,
+  "temp_span": 40.0
+ },
+ "threshold": 0.1586877499624061,
+ "note": "migrate when health index < threshold; threshold chosen by max F1 on out-of-fold predictions of the training scenarios"
+}
