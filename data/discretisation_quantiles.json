@@ -1,0 +1,142 @@
+{
+  "_comment": "Tertile cut points. Computed from the TRAINING scenarios only, so the held-out data never influences how evidence is encoded. A value below q33 is the lowest state, at or above q67 the highest. residual_energy and reliability_prior are inverted downstream: a low numeric value means high stress.",
+  "n_snapshots": 50991,
+  "global": {
+    "cpu_util": {
+      "q33": 0.0,
+      "q67": 0.0
+    },
+    "ram_util": {
+      "q33": 0.0,
+      "q67": 0.01
+    },
+    "queue_depth": {
+      "q33": 0.0,
+      "q67": 17.0
+    },
+    "uplink_latency": {
+      "q33": 100.0,
+      "q67": 100.2
+    },
+    "jitter_pktloss": {
+      "q33": 0.6166,
+      "q67": 0.99
+    },
+    "handover_rate": {
+      "q33": 0.0,
+      "q67": 0.0
+    },
+    "residual_energy": {
+      "q33": 0.8912,
+      "q67": 0.9531
+    },
+    "reliability_prior": {
+      "q33": 0.85,
+      "q67": 0.85
+    }
+  },
+  "by_device_class": {
+    "cloud": {
+      "cpu_util": {
+        "q33": 0.0127,
+        "q67": 0.0347
+      },
+      "ram_util": {
+        "q33": 0.0025,
+        "q67": 0.0025
+      },
+      "queue_depth": {
+        "q33": 334.0,
+        "q67": 779.666667
+      },
+      "uplink_latency": {
+        "q33": 2170.0,
+        "q67": 3200.0
+      },
+      "jitter_pktloss": {
+        "q33": 1.0,
+        "q67": 1.0
+      },
+      "handover_rate": {
+        "q33": 0.0,
+        "q67": 0.0
+      },
+      "residual_energy": {
+        "q33": 0.8544,
+        "q67": 0.9295
+      },
+      "reliability_prior": {
+        "q33": 0.99,
+        "q67": 0.99
+      }
+    },
+    "edge": {
+      "cpu_util": {
+        "q33": 0.1,
+        "q67": 0.2
+      },
+      "ram_util": {
+        "q33": 0.01,
+        "q67": 0.01
+      },
+      "queue_depth": {
+        "q33": 25.0,
+        "q67": 46.0
+      },
+      "uplink_latency": {
+        "q33": 2.698,
+        "q67": 3.49
+      },
+      "jitter_pktloss": {
+        "q33": 0.855133,
+        "q67": 1.0
+      },
+      "handover_rate": {
+        "q33": 1.0,
+        "q67": 2.0
+      },
+      "residual_energy": {
+        "q33": 0.7577,
+        "q67": 0.9017
+      },
+      "reliability_prior": {
+        "q33": 0.7,
+        "q67": 0.7
+      }
+    },
+    "fog": {
+      "cpu_util": {
+        "q33": 0.0,
+        "q67": 0.0
+      },
+      "ram_util": {
+        "q33": 0.0,
+        "q67": 0.0
+      },
+      "queue_depth": {
+        "q33": 0.0,
+        "q67": 0.0
+      },
+      "uplink_latency": {
+        "q33": 100.0,
+        "q67": 100.85
+      },
+      "jitter_pktloss": {
+        "q33": 0.0,
+        "q67": 0.767267
+      },
+      "handover_rate": {
+        "q33": 0.0,
+        "q67": 0.0
+      },
+      "residual_energy": {
+        "q33": 0.9145,
+        "q67": 0.9588
+      },
+      "reliability_prior": {
+        "q33": 0.85,
+        "q67": 0.85
+      }
+    }
+  }
+}
