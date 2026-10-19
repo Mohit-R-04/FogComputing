@@ -1,30 +1,33 @@
 package org.fog.ft;
 
 /**
- * One telemetry snapshot taken from a fog node at one resource-management epoch.
+ * One telemetry snapshot taken from a node at one resource-management epoch.
  *
- * <p>The fields correspond one-for-one to the evidence tier of the Bayesian Belief
- * Network described in Section III.B of the Review 2 paper. Values are kept
- * continuous here; discretisation into {low, medium, high} happens on the Python
- * side against quantiles of the generated data, so that a state such as "high CPU
- * utilisation" is defined relative to the observed distribution rather than by an
- * arbitrary cut-off.
+ * <p>The eight measurement channels correspond one-for-one to the evidence tier of the
+ * Bayesian Belief Network (Section III.B of the Review 2 paper). The five trend
+ * channels are what a monitoring agent reports alongside the raw readings -- the rate
+ * of change over its last few samples -- because a node that is degrading shows it as
+ * a drift before it shows it as an extreme value. Values are kept continuous here;
+ * discretisation into {low, medium, high} happens on the Python side.
  *
- * <p>Two channels can be absent, and both are written as an empty CSV field so the
- * Python loader treats them as "did not report" and marginalises them out rather
- * than imputing anything:
- *
+ * <p>Any channel can be absent and is written as an empty CSV field, which every
+ * loader treats as "did not report". Absent channels arise from:
  * <ul>
- *   <li>{@code temperature} -- always, since no simulated node exposes a thermal
- *       sensor;</li>
- *   <li>{@code jitterPktLoss} -- whenever too few tuples reached the node in the
- *       window to measure the variability of their arrival times.</li>
+ *   <li>{@code temperature} on edge devices, which expose no thermal sensor;</li>
+ *   <li>{@code jitterPktLoss} when too few tuples reached the node to measure it;</li>
+ *   <li>trend channels before the agent has a history to compare against;</li>
+ *   <li>injected telemetry dropout in the robustness experiments.</li>
  * </ul>
+ *
+ * <p>{@code trueHealth} and {@code failureCause} are ground truth from the fault
+ * model. They are written for analysis and for the oracle baseline and are never
+ * given to any predictor.
  */
 public class NodeTelemetry {
 
-    /** Which scenario of the sweep produced this row. */
+    /** Which scenario of the sweep and which seed produced this row. */
     public final int scenarioId;
+    public final long seed;
 
     /** Simulation-level identity of the node. */
     public final int nodeId;
@@ -36,52 +39,60 @@ public class NodeTelemetry {
     /** Simulation clock at which this snapshot was taken. */
     public final double epoch;
 
-    // ---- evidence tier (8 variables) ----------------------------------------
-    /** Fraction of host MIPS requested, in [0, 1]. */
+    // ---- evidence tier: measurements ----------------------------------------
+    /** Work executed against capacity over the window, in [0, 1]. */
     public final double cpuUtil;
     /** Fraction of host RAM allocated, in [0, 1]. */
     public final double ramUtil;
     /** Pending and arriving tuples for the window. */
-    public final int queueDepth;
-    /** Effective uplink latency in ms: configured link delay plus queueing delay. */
+    public final double queueDepth;
+    /** Effective uplink latency in ms: link delay plus transmission load. */
     public final double uplinkLatency;
-    /** Arrival-time jitter in [0, 1], or NaN when too few arrivals to measure. */
+    /** Arrival-time jitter in [0, 1]. */
     public final double jitterPktLoss;
-    /** Parent reassignments observed over the trailing window. */
-    public final int handoverRate;
+    /** Topology changes over the trailing window (own parent changes for edge
+     *  devices; user attach/detach events for fog nodes). */
+    public final double handoverRate;
     /** Remaining energy as a fraction of declared capacity, in [0, 1]. */
     public final double residualEnergy;
-    /** Die/ambient temperature in degrees Celsius, or NaN when unobserved. */
+    /** Die/enclosure temperature in degrees Celsius. */
     public final double temperature;
+
+    // ---- evidence tier: agent-side trends -----------------------------------
+    /** cpu_util minus the mean of the agent's previous readings. */
+    public final double cpuTrend;
+    /** Relative change of queue depth against the previous readings. */
+    public final double queueTrend;
+    /** Relative change of uplink latency against the previous readings. */
+    public final double latencyTrend;
+    /** Temperature change against the previous readings, degrees Celsius. */
+    public final double tempTrend;
+    /** Residual energy consumed since the previous reading. */
+    public final double energyDrain;
 
     // ---- reliability prior ---------------------------------------------------
     /** Prior reliability of the device class, in [0, 1]; higher is more reliable. */
     public final double reliabilityPrior;
 
-    // ---- ground truth (hidden from the BBN until verification) ---------------
-    /** 1 if this node actually failed within the look-ahead horizon, else 0. */
+    // ---- ground truth (never shown to a predictor) ---------------------------
+    public final double trueHealth;
+    /** 1 if this node failed within the look-ahead horizon, else 0. */
     public int groundTruthFail;
-    /** Absolute time of the injected failure, or NaN if the node never failed. */
+    /** Absolute time of the failure, or NaN if the node never failed. */
     public double failureTime;
-    /** Set by the collector once the scenario is known. */
-    public int scenario;
+    /** wear-out, shock, sudden, battery, or empty. */
+    public String failureCause = "";
 
-    public NodeTelemetry(int nodeId, String nodeName, int level, String deviceClass,
-                         double epoch, double cpuUtil, double ramUtil, int queueDepth,
-                         double uplinkLatency, double jitterPktLoss, int handoverRate,
+    public NodeTelemetry(int scenarioId, long seed, int nodeId, String nodeName, int level,
+                         String deviceClass, double epoch,
+                         double cpuUtil, double ramUtil, double queueDepth,
+                         double uplinkLatency, double jitterPktLoss, double handoverRate,
                          double residualEnergy, double temperature,
-                         double reliabilityPrior) {
-        this(-1, nodeId, nodeName, level, deviceClass, epoch, cpuUtil, ramUtil,
-             queueDepth, uplinkLatency, jitterPktLoss, handoverRate, residualEnergy,
-             temperature, reliabilityPrior);
-    }
-
-    public NodeTelemetry(int scenarioId, int nodeId, String nodeName, int level,
-                         String deviceClass, double epoch, double cpuUtil,
-                         double ramUtil, int queueDepth, double uplinkLatency,
-                         double jitterPktLoss, int handoverRate, double residualEnergy,
-                         double temperature, double reliabilityPrior) {
+                         double cpuTrend, double queueTrend, double latencyTrend,
+                         double tempTrend, double energyDrain,
+                         double reliabilityPrior, double trueHealth) {
         this.scenarioId = scenarioId;
+        this.seed = seed;
         this.nodeId = nodeId;
         this.nodeName = nodeName;
         this.level = level;
@@ -95,47 +106,78 @@ public class NodeTelemetry {
         this.handoverRate = handoverRate;
         this.residualEnergy = residualEnergy;
         this.temperature = temperature;
+        this.cpuTrend = cpuTrend;
+        this.queueTrend = queueTrend;
+        this.latencyTrend = latencyTrend;
+        this.tempTrend = tempTrend;
+        this.energyDrain = energyDrain;
         this.reliabilityPrior = reliabilityPrior;
+        this.trueHealth = trueHealth;
         this.groundTruthFail = 0;
         this.failureTime = Double.NaN;
     }
 
-    /** Returns a copy of this snapshot tagged with a scenario id. */
-    public NodeTelemetry withScenario(int id) {
-        NodeTelemetry t = new NodeTelemetry(id, nodeId, nodeName, level, deviceClass,
-                epoch, cpuUtil, ramUtil, queueDepth, uplinkLatency, jitterPktLoss,
-                handoverRate, residualEnergy, temperature, reliabilityPrior);
-        t.groundTruthFail = groundTruthFail;
-        t.failureTime = failureTime;
-        return t;
+    /** Channel names in a fixed order, shared with the dropout model and predictors. */
+    public static final String[] CHANNELS = {
+        "cpu_util", "ram_util", "queue_depth", "uplink_latency", "jitter_pktloss",
+        "handover_rate", "residual_energy", "temperature",
+        "cpu_trend", "queue_trend", "latency_trend", "temp_trend", "energy_drain",
+    };
+
+    /** Value of a channel by name; NaN when the channel did not report. */
+    public double value(String channel) {
+        switch (channel) {
+            case "cpu_util": return cpuUtil;
+            case "ram_util": return ramUtil;
+            case "queue_depth": return queueDepth;
+            case "uplink_latency": return uplinkLatency;
+            case "jitter_pktloss": return jitterPktLoss;
+            case "handover_rate": return handoverRate;
+            case "residual_energy": return residualEnergy;
+            case "temperature": return temperature;
+            case "cpu_trend": return cpuTrend;
+            case "queue_trend": return queueTrend;
+            case "latency_trend": return latencyTrend;
+            case "temp_trend": return tempTrend;
+            case "energy_drain": return energyDrain;
+            default: throw new IllegalArgumentException("unknown channel " + channel);
+        }
     }
 
     /** Header matching {@link #toCsvRow(int)}. */
     public static String csvHeader() {
-        return "case_id,scenario_id,node_id,node_name,level,device_class,epoch,"
+        return "case_id,scenario_id,seed,node_id,node_name,level,device_class,epoch,"
              + "cpu_util,ram_util,queue_depth,uplink_latency,jitter_pktloss,"
-             + "handover_rate,residual_energy,temperature,reliability_prior,"
-             + "ground_truth_fail,failure_time";
+             + "handover_rate,residual_energy,temperature,"
+             + "cpu_trend,queue_trend,latency_trend,temp_trend,energy_drain,"
+             + "reliability_prior,true_health,ground_truth_fail,failure_time,failure_cause";
     }
 
     /** Formats a possibly-absent measurement: empty means "did not report". */
     private static String optional(double value, String format) {
-        return Double.isNaN(value) ? "" : String.format(format, value);
+        return Double.isNaN(value) ? "" : String.format(java.util.Locale.ROOT, format, value);
     }
 
-    /**
-     * Renders the snapshot as a CSV row. Unobserved channels are written as empty
-     * fields, which the Python loader reads as "absent from the evidence set".
-     */
+    /** Renders the snapshot as a CSV row; absent channels become empty fields. */
     public String toCsvRow(int caseId) {
-        return String.format(
-                "%d,%d,%d,%s,%d,%s,%.1f,%.4f,%.4f,%d,%.3f,%s,%d,%.4f,%s,%.3f,%d,%s",
-                caseId, scenarioId, nodeId, nodeName, level, deviceClass, epoch,
-                cpuUtil, ramUtil, queueDepth, uplinkLatency,
+        return String.format(java.util.Locale.ROOT,
+                "%d,%d,%d,%d,%s,%d,%s,%.1f,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.3f,%.4f,%d,%s,%s",
+                caseId, scenarioId, seed, nodeId, nodeName, level, deviceClass, epoch,
+                optional(cpuUtil, "%.4f"),
+                optional(ramUtil, "%.4f"),
+                optional(queueDepth, "%.1f"),
+                optional(uplinkLatency, "%.3f"),
                 optional(jitterPktLoss, "%.4f"),
-                handoverRate, residualEnergy,
+                optional(handoverRate, "%.0f"),
+                optional(residualEnergy, "%.4f"),
                 optional(temperature, "%.2f"),
-                reliabilityPrior, groundTruthFail,
-                optional(failureTime, "%.1f"));
+                optional(cpuTrend, "%.4f"),
+                optional(queueTrend, "%.4f"),
+                optional(latencyTrend, "%.4f"),
+                optional(tempTrend, "%.3f"),
+                optional(energyDrain, "%.5f"),
+                reliabilityPrior, trueHealth, groundTruthFail,
+                optional(failureTime, "%.1f"),
+                failureCause == null ? "" : failureCause);
     }
 }

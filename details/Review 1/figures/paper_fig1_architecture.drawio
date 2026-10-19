@@ -1,0 +1,70 @@
+<mxfile host="app.diagrams.net" type="device">
+  <diagram name="Fig1 Architecture" id="pf1">
+    <mxGraphModel dx="800" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="400" pageHeight="600" math="0" shadow="0">
+      <root>
+        <mxCell id="0" /><mxCell id="1" parent="0" />
+
+        <mxCell id="cl" value="Cloud Layer" style="rounded=0;html=1;fillColor=none;strokeColor=#999999;dashed=1;dashPattern=4 3;verticalAlign=top;align=left;spacingLeft=6;spacingTop=3;fontFamily=Times New Roman;fontSize=11;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="8" y="8" width="384" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="c1" value="Cloud Data Centre&#10;(offload, archival)" style="rounded=0;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#000000;fontFamily=Times New Roman;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="22" y="34" width="168" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="c2" value="Model &amp; CPT&#10;Repository" style="rounded=0;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#000000;fontFamily=Times New Roman;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="210" y="34" width="168" height="48" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ct" value="Proactive Fault-Tolerance Controller&#10;(co-located with the Fog Orchestration Node, proxy tier)" style="rounded=0;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#000000;strokeWidth=2;verticalAlign=top;spacingTop=4;fontFamily=Times New Roman;fontSize=11;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="8" y="140" width="384" height="252" as="geometry" />
+        </mxCell>
+        <mxCell id="pre" value="Telemetry Pre-processing &amp; Discretisation" style="rounded=0;html=1;whiteSpace=wrap;fillColor=#F2F2F2;strokeColor=#000000;fontFamily=Times New Roman;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="24" y="182" width="352" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="n1" value="N1 &#8212; BBN Inference Engine&#10;P(F = fail | e) within horizon &#916;t" style="rounded=0;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#000000;fontFamily=Times New Roman;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="24" y="230" width="352" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="n2" value="N2 &#8212; Risk-Aware Placement and&#10;Expected-Loss Migration" style="rounded=0;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#000000;fontFamily=Times New Roman;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="24" y="288" width="352" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="n3" value="N3 &#8212; Criticality-Aware Selective Replication" style="rounded=0;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#000000;fontFamily=Times New Roman;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="24" y="346" width="352" height="34" as="geometry" />
+        </mxCell>
+
+        <mxCell id="fl" value="Fog Layer" style="rounded=0;html=1;fillColor=none;strokeColor=#999999;dashed=1;dashPattern=4 3;verticalAlign=top;align=left;spacingLeft=6;spacingTop=3;fontFamily=Times New Roman;fontSize=11;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="8" y="440" width="384" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="f1" value="Fog Node 1&#10;+ telemetry agent" style="rounded=0;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#000000;fontFamily=Times New Roman;fontSize=10;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="20" y="464" width="116" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="f2" value="Fog Node 2&#10;+ telemetry agent" style="rounded=0;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#000000;fontFamily=Times New Roman;fontSize=10;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="142" y="464" width="116" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="f3" value="Fog Node n&#10;+ telemetry agent" style="rounded=0;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#000000;fontFamily=Times New Roman;fontSize=10;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="264" y="464" width="116" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="il" value="IoT / End-Device Layer" style="rounded=0;html=1;fillColor=none;strokeColor=#999999;dashed=1;dashPattern=4 3;verticalAlign=top;align=left;spacingLeft=6;spacingTop=3;fontFamily=Times New Roman;fontSize=11;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="8" y="536" width="384" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="i1" value="ECG / EEG&#10;sensors" style="rounded=0;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#000000;fontFamily=Times New Roman;fontSize=10;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="20" y="558" width="116" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="i2" value="Surveillance cameras" style="rounded=0;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#000000;fontFamily=Times New Roman;fontSize=10;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="142" y="558" width="116" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="i3" value="Mobile user equipment" style="rounded=0;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#000000;fontFamily=Times New Roman;fontSize=10;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="264" y="558" width="116" height="28" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ei" value="tuples" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#000000;exitX=0.5;exitY=0;entryX=0.5;entryY=1;edgeStyle=none;fontFamily=Times New Roman;fontSize=10;verticalAlign=bottom;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="i2" target="f2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="et" value="telemetry" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#000000;exitX=0.25;exitY=0;entryX=0.25;entryY=1;fontFamily=Times New Roman;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="f1" target="ct"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="em" value="migrate / replicate" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#000000;dashed=1;exitX=0.75;exitY=1;entryX=0.75;entryY=0;fontFamily=Times New Roman;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="ct" target="f3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eo" value="observed outcomes&#10;(CPT update)" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#000000;exitX=0.75;exitY=0;entryX=0.5;entryY=1;fontFamily=Times New Roman;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="ct" target="c2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ec" value="offload" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#000000;exitX=0.25;exitY=0;entryX=0.5;entryY=1;fontFamily=Times New Roman;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="ct" target="c1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="p1" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#000000;exitX=0.5;exitY=1;entryX=0.5;entryY=0;edgeStyle=none;" edge="1" parent="1" source="pre" target="n1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="p2" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#000000;exitX=0.5;exitY=1;entryX=0.5;entryY=0;edgeStyle=none;" edge="1" parent="1" source="n1" target="n2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="p3" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#000000;exitX=0.5;exitY=1;entryX=0.5;entryY=0;edgeStyle=none;" edge="1" parent="1" source="n2" target="n3"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

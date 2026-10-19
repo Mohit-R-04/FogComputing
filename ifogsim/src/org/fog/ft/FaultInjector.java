@@ -3,134 +3,233 @@ package org.fog.ft;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.commons.math3.special.Erf;
+
 /**
- * Ground-truth failure process for the simulated fog topology.
+ * Ground-truth failure process for the simulated fog topology: a stress-driven
+ * degradation (wear-out) model with fail-slow symptoms.
  *
- * <p>iFogSim2 has no native failure model, so one is injected here. This is the
- * fault-injection harness Section IV of the Review 2 paper promises.
+ * <p>iFogSim has no native failure model, so one is injected here. This is the
+ * fault-injection harness Section IV of the Review 2 paper promises. Its design follows
+ * the premise the project rests on (Review slides: "nodes degrade first: utilisation
+ * rises, queues grow, links and energy decay") and the field evidence on fail-slow
+ * hardware: components usually lose performance for a while before they stop.
  *
- * <p><b>Why this model and not the BBN's own.</b> The hazard below is a continuous
- * log-linear proportional-hazards model. The predictor being evaluated is a discrete
- * multi-level Bayesian network with elicited conditional probability tables. The two
- * have deliberately different functional forms, so the BBN is not being graded
- * against its own generative assumptions -- it has to recover a continuous hazard
- * relationship through a three-state discretisation and a latent aggregation tier.
- *
- * <p>The instantaneous hazard for node <i>n</i> at epoch <i>t</i> is
- *
+ * <h2>Hidden health</h2>
+ * Every node carries a health value {@code h} in [0, 1] that is never observed by any
+ * predictor. It starts below 1 for older hardware ({@code h0 = 1 - 0.45 u^3}, so most
+ * nodes are near-new and roughly one in ten is noticeably worn) and loses, at every
+ * epoch,
  * <pre>
- *   lambda(n,t) = lambda_0(class) * A * exp( a*cpu + b*ram + c*queue_norm
- *                                          + d*latency_norm + e*(1-energy)
- *                                          + f*jitter + g*handover_norm )
+ *   wear = W(class) * exp( s(class) * S ) * LogNormal(0, 0.35)    (+ rare shocks)
+ *   S    = 1.6 cpu + 0.8 queue + 1.0 thermal + 1.4 depletion
+ *        + 0.4 latency + 0.3 jitter + 0.2 handovers               (all normalised to [0,1])
  * </pre>
+ * computed from the node's <i>true</i> state, before any telemetry dropout. Cumulative
+ * damage under sustained load, heat and battery drain is the standard wear-out picture
+ * (Miner's rule, Arrhenius-type acceleration).
  *
- * where lambda_0 comes from the device class MTBF and A is an explicit acceleration
- * factor. Accelerated-life testing is standard practice: without it a one-year-MTBF
- * gateway essentially never fails inside a simulation of feasible length, and no
- * positive cases would exist to verify against. The factor is declared here rather
- * than buried so a reviewer can see exactly how much compression was applied.
+ * <h2>Failure</h2>
+ * A node fails during the next epoch when (a) its health is exhausted (wear-out, or a
+ * shock that exhausts it), (b) an edge device's battery is empty, or (c) a sudden
+ * failure occurs. Sudden failures are deliberately memoryless and symptom-free: they
+ * are the share of failures no predictor can anticipate, and they keep the evaluation
+ * honest about the limits of prediction.
+ *
+ * <h2>Symptoms</h2>
+ * As {@code h} falls the node becomes slower ({@link #slowdown}), its network interface
+ * retransmits more ({@link #latencyFactor}), it draws extra power ({@link
+ * #extraPowerFraction}) and runs hotter ({@link #heatRise}). These factors are applied
+ * <i>inside</i> iFogSim by {@link InstrumentedFogDevice}, so the observable precursors
+ * -- higher CPU utilisation, longer queues and loop delays, higher latency, faster
+ * energy drain, higher temperature -- emerge from the simulator's own mechanics rather
+ * than being written into the telemetry. They also feed back into the stress, so
+ * degradation accelerates near the end of life.
+ *
+ * <h2>Not circular</h2>
+ * The predictor is a discrete Bayesian network over discretised telemetry. The ground
+ * truth is a continuous hidden-state process with noise, shocks, feedback and
+ * memoryless sudden failures. The network never sees health, the stress formula or the
+ * random draws; it sees sampled, discretised and sometimes missing telemetry.
+ *
+ * <p>All randomness comes from {@link FtRandom}, keyed by seed, scenario, node name and
+ * epoch, so draws are independent across scenarios and seeds and identical across
+ * fault-tolerance policies (common random numbers).
  */
 public class FaultInjector {
 
-    /** One epoch of simulated time is treated as one hour of node operation. */
-    public static final double HOURS_PER_EPOCH = 1.0;
-
     /**
-     * Accelerated-life compression. Raises every base hazard uniformly so that a
-     * usable number of failures occurs within the simulation horizon. Uniform
-     * scaling preserves the relative ordering of device-class reliability.
+     * One epoch of simulation time is treated as one hour of node operation: an
+     * accelerated-life compression so that wear-out happens within a run of feasible
+     * length. Uniform compression preserves the ordering of device-class reliability.
      */
-    public static final double ACCELERATION_FACTOR = 8.0;
+    public static final double HOURS_PER_EPOCH = 1.0;
 
     /** Look-ahead horizon in simulation time units; must exceed migration time. */
     public static final double HORIZON_DELTA_T = 200.0;
 
-    // Hazard coefficients on the normalised stressors.
-    private static final double A_CPU       = 1.8;
-    private static final double B_RAM       = 1.0;
-    private static final double C_QUEUE     = 0.8;
-    private static final double D_LATENCY   = 0.6;
-    private static final double E_ENERGY    = 1.5;
-    private static final double F_JITTER    = 0.7;
-    private static final double G_HANDOVER  = 0.4;
+    // ---- stress weights on the normalised stressors ------------------------------
+    static final double W_CPU = 1.6;
+    static final double W_QUEUE = 0.8;
+    static final double W_THERMAL = 1.0;
+    static final double W_ENERGY = 1.4;
+    static final double W_LATENCY = 0.4;
+    static final double W_JITTER = 0.3;
+    static final double W_HANDOVER = 0.2;
 
-    /** Mean time between failures in hours, by device class. */
-    private static final Map<String, Double> MTBF_HOURS = new HashMap<String, Double>();
-    /** Prior reliability in [0,1] exposed to the BBN, by device class. */
+    /** Normalisation points: the value treated as fully saturated. */
+    static final double QUEUE_SATURATION = 120.0;
+    static final double LATENCY_SATURATION = 150.0;
+    static final double HANDOVER_SATURATION = 8.0;
+    /** Temperature below which heat causes no extra wear, and the span to "critical". */
+    static final double THERMAL_SAFE_C = 45.0;
+    static final double THERMAL_SPAN_C = 40.0;
+
+    // ---- per-class wear parameters ------------------------------------------------
+    private static final Map<String, Double> BASE_WEAR = new HashMap<String, Double>();
+    private static final Map<String, Double> SENSITIVITY = new HashMap<String, Double>();
+    private static final Map<String, Double> SUDDEN_PER_EPOCH = new HashMap<String, Double>();
     private static final Map<String, Double> RELIABILITY_PRIOR = new HashMap<String, Double>();
+    private static final Map<String, Double> MTBF_HOURS = new HashMap<String, Double>();
     static {
-        MTBF_HOURS.put("cloud",   87600.0);  // ~10 years, redundant datacentre hardware
-        MTBF_HOURS.put("fog",     8760.0);  // ~1 year, resource-constrained fog node
-        MTBF_HOURS.put("edge",    8760.0);  // ~1 year; battery exposure is represented
-                                           // by the energy term rather than a depressed MTBF
+        // Datacentre hardware: redundant power and active cooling, so load barely ages it.
+        BASE_WEAR.put("cloud", 0.0002);
+        SENSITIVITY.put("cloud", 0.3);
+        SUDDEN_PER_EPOCH.put("cloud", 0.00002);
+        // Fog gateways: commodity hardware, passive cooling, exposed enclosures.
+        BASE_WEAR.put("fog", 0.0010);
+        SENSITIVITY.put("fog", 1.0);
+        SUDDEN_PER_EPOCH.put("fog", 0.0004);
+        // Edge devices: battery powered, the battery being their dominant failure mode.
+        BASE_WEAR.put("edge", 0.0008);
+        SENSITIVITY.put("edge", 1.0);
+        SUDDEN_PER_EPOCH.put("edge", 0.0006);
 
         RELIABILITY_PRIOR.put("cloud", 0.99);
-        RELIABILITY_PRIOR.put("fog",   0.85);
-        RELIABILITY_PRIOR.put("edge",  0.70);
+        RELIABILITY_PRIOR.put("fog", 0.85);
+        RELIABILITY_PRIOR.put("edge", 0.70);
+        MTBF_HOURS.put("cloud", 87600.0);
+        MTBF_HOURS.put("fog", 8760.0);
+        MTBF_HOURS.put("edge", 8760.0);
     }
 
     /**
-     * Per-class sensitivity of the hazard to stress.
-     *
-     * <p>MTBF alone does not capture how hardware responds to being pushed. A
-     * datacentre host has redundant power and active cooling, so high utilisation
-     * translates weakly into failure risk; a passively-cooled handset running on
-     * battery has no such margin and degrades far faster under the same relative
-     * load. Without this term a single cloud node driven to full utilisation failed
-     * within four epochs, which is not a defensible ground truth for hardware with a
-     * ten-year MTBF.
+     * {@code -Dft.noFailures=true} disables degradation and failure entirely: the
+     * "baseline run with no failures, for normal loop delay and energy" of the Review 2
+     * evaluation plan, and a check that the service pipeline itself loses nothing.
      */
-    private static final Map<String, Double> STRESS_SENSITIVITY = new HashMap<String, Double>();
-    static {
-        STRESS_SENSITIVITY.put("cloud", 0.25);
-        STRESS_SENSITIVITY.put("fog",   1.00);
-        STRESS_SENSITIVITY.put("edge",  1.25);
-    }
+    public static final boolean FAILURES_ENABLED = !Boolean.getBoolean("ft.noFailures");
 
-    /** Queue depth treated as fully saturated, for normalisation. */
-    private static final double QUEUE_SATURATION = 120.0;
-    /** Uplink latency treated as fully degraded, in ms, for normalisation. */
-    private static final double LATENCY_SATURATION = 150.0;
-    /** Handovers per window treated as fully degraded, for normalisation. */
-    private static final double HANDOVER_SATURATION = 8.0;
+    static final double WEAR_NOISE_SIGMA = 0.35;
+    static final double SHOCK_PROBABILITY = 0.0005;
+    static final double SHOCK_MIN = 0.10;
+    static final double SHOCK_MAX = 0.30;
+    static final double INITIAL_AGE_SPREAD = 0.45;
+    static final double BATTERY_EMPTY = 0.01;
+
+    // ---- symptom gains --------------------------------------------------------------
+    static final double SLOWDOWN_GAIN = 1.5;   // work inflation at h = 0 is 2.5x
+    static final double LATENCY_GAIN = 0.6;    // link delay at h = 0 is 1.6x
+    static final double POWER_GAIN = 0.30;     // extra draw at h = 0 is 30% of busy power
+    static final double HEAT_GAIN_C = 18.0;    // extra temperature at h = 0
+
+    /** State of one node. */
+    static final class Node {
+        final String name;
+        final String deviceClass;
+        final long hash;
+        final double initialHealth;
+        double health;
+        /** Stress S of the latest epoch (what the next epoch's wear will most likely see). */
+        double lastStress = 0.0;
+        double failureTime = Double.NaN;
+        String cause = "";
+
+        Node(String name, String deviceClass, long hash, double initialHealth) {
+            this.name = name;
+            this.deviceClass = deviceClass;
+            this.hash = hash;
+            this.initialHealth = initialHealth;
+            this.health = initialHealth;
+        }
+    }
 
     private final long seed;
-    /** Absolute simulation time at which each node fails; absent means still alive. */
-    private final Map<Integer, Double> failureTimes = new HashMap<Integer, Double>();
+    private final int scenario;
+    private final Map<String, Node> nodes = new HashMap<String, Node>();
 
-    public FaultInjector(long seed) {
+    public FaultInjector(long seed, int scenario) {
         this.seed = seed;
+        this.scenario = scenario;
     }
 
-    /**
-     * Deterministic uniform draw for one (node, epoch, stream) triple.
-     *
-     * <p>Deliberately not a shared {@link java.util.Random} sequence. A single
-     * sequence makes every draw depend on how many draws came before it, and
-     * therefore on the order in which CloudSim happens to deliver the
-     * resource-management events -- which is not stable between runs. Seeding the
-     * generator did not make the simulation reproducible: three runs at seed
-     * 20260912 retained 6326, 6184 and 6355 snapshots and produced three different
-     * case files.
-     *
-     * <p>Hashing the coordinates of the draw instead makes each one independent of
-     * every other, so the failure process is identical run to run no matter what
-     * order the events arrive in. The mixing function is splitmix64.
-     */
-    private double uniform(int nodeId, long epochIndex, long stream) {
-        long h = seed;
-        h += 0x9E3779B97F4A7C15L * (nodeId + 1);
-        h += 0xBF58476D1CE4E5B9L * (epochIndex + 1);
-        h += 0x94D049BB133111EBL * (stream + 1);
+    public long seed() {
+        return seed;
+    }
 
-        h ^= (h >>> 30);
-        h *= 0xBF58476D1CE4E5B9L;
-        h ^= (h >>> 27);
-        h *= 0x94D049BB133111EBL;
-        h ^= (h >>> 31);
+    public int scenario() {
+        return scenario;
+    }
 
-        // Top 53 bits to a double in [0, 1).
-        return (h >>> 11) * 0x1.0p-53;
+    /** Uniform draw for one coordinate of the experiment. */
+    double uniform(long nodeHash, long epochIndex, long stream) {
+        return FtRandom.uniform(FtRandom.key(seed, scenario, nodeHash, epochIndex, stream));
+    }
+
+    double normal(long nodeHash, long epochIndex, long stream) {
+        return FtRandom.normal(FtRandom.key(seed, scenario, nodeHash, epochIndex, stream));
+    }
+
+    /** Registers a node on first sight; its initial wear is drawn here. */
+    Node node(String name, String deviceClass) {
+        Node n = nodes.get(name);
+        if (n == null) {
+            long h = FtRandom.hash(name);
+            double u = uniform(h, 0, FtRandom.S_INITIAL_HEALTH);
+            double h0 = ("cloud".equals(deviceClass) || !FAILURES_ENABLED) ? 1.0
+                    : 1.0 - INITIAL_AGE_SPREAD * u * u * u;
+            n = new Node(name, deviceClass, h, h0);
+            nodes.put(name, n);
+        }
+        return n;
+    }
+
+    public void register(String name, String deviceClass) {
+        node(name, deviceClass);
+    }
+
+    /** Current hidden health of a node, 1.0 if it has not been seen yet. */
+    public double health(String name) {
+        Node n = nodes.get(name);
+        return n == null ? 1.0 : Math.max(0.0, Math.min(1.0, n.health));
+    }
+
+    private double damage(String name) {
+        return 1.0 - health(name);
+    }
+
+    /** Multiplier on the CPU work a degraded node needs per tuple (>= 1). */
+    public double slowdown(String name) {
+        double d = damage(name);
+        return 1.0 + SLOWDOWN_GAIN * d * d;
+    }
+
+    /** Multiplier on the node's link delay (>= 1). */
+    public double latencyFactor(String name) {
+        double d = damage(name);
+        return 1.0 + LATENCY_GAIN * d * d;
+    }
+
+    /** Extra power drawn by a degraded node, as a fraction of its busy power. */
+    public double extraPowerFraction(String name) {
+        double d = damage(name);
+        return POWER_GAIN * Math.pow(d, 1.5);
+    }
+
+    /** Extra steady-state temperature of a degraded node, in degrees Celsius. */
+    public double heatRise(String name) {
+        double d = damage(name);
+        return HEAT_GAIN_C * Math.pow(d, 1.5);
     }
 
     public static double reliabilityPriorFor(String deviceClass) {
@@ -143,19 +242,6 @@ public class FaultInjector {
         return m == null ? 8760.0 : m;
     }
 
-    /** Base per-hour hazard implied by the device class MTBF, before acceleration. */
-    private static double baseHazard(String deviceClass) {
-        return 1.0 / mtbfHoursFor(deviceClass);
-    }
-
-    /**
-     * Clamps to [0,1], treating an unmeasurable reading as no stress.
-     *
-     * <p>Jitter is now genuinely absent whenever too few tuples reached a node to
-     * measure the variability of their arrival timing, so NaN reaches here. Left
-     * unhandled it would poison the exponent and make the hazard NaN, which would
-     * silently stop every node in the run from ever failing.
-     */
     private static double clamp01(double v) {
         if (Double.isNaN(v)) return 0.0;
         if (v < 0.0) return 0.0;
@@ -163,79 +249,167 @@ public class FaultInjector {
         return v;
     }
 
-    /**
-     * Computes the stress-accelerated hazard for one snapshot.
-     * Temperature is excluded: it is unobserved on simulated nodes, and a ground-truth
-     * process must not depend on a channel the predictor can never see.
-     */
-    private double hazard(NodeTelemetry t) {
-        double queueNorm    = clamp01(t.queueDepth / QUEUE_SATURATION);
-        double latencyNorm  = clamp01(t.uplinkLatency / LATENCY_SATURATION);
-        double handoverNorm = clamp01(t.handoverRate / HANDOVER_SATURATION);
-        double depletion    = clamp01(1.0 - t.residualEnergy);
+    private static double param(Map<String, Double> m, String cls, double fallback) {
+        Double v = m.get(cls);
+        return v == null ? fallback : v;
+    }
 
-        double exponent = A_CPU      * clamp01(t.cpuUtil)
-                        + B_RAM      * clamp01(t.ramUtil)
-                        + C_QUEUE    * queueNorm
-                        + D_LATENCY  * latencyNorm
-                        + E_ENERGY   * depletion
-                        + F_JITTER   * clamp01(t.jitterPktLoss)
-                        + G_HANDOVER * handoverNorm;
-
-        Double sensitivity = STRESS_SENSITIVITY.get(t.deviceClass);
-        double s = (sensitivity == null) ? 1.0 : sensitivity;
-
-        return baseHazard(t.deviceClass) * ACCELERATION_FACTOR * Math.exp(s * exponent);
+    /** Normalised stress of one true-state snapshot. */
+    static double stress(NodeTelemetry t) {
+        double thermal = Double.isNaN(t.temperature) ? 0.0
+                : clamp01((t.temperature - THERMAL_SAFE_C) / THERMAL_SPAN_C);
+        double depletion = Double.isNaN(t.residualEnergy) ? 0.0 : clamp01(1.0 - t.residualEnergy);
+        return W_CPU * clamp01(t.cpuUtil)
+             + W_QUEUE * clamp01(t.queueDepth / QUEUE_SATURATION)
+             + W_THERMAL * thermal
+             + W_ENERGY * depletion
+             + W_LATENCY * clamp01(t.uplinkLatency / LATENCY_SATURATION)
+             + W_JITTER * clamp01(t.jitterPktLoss)
+             + W_HANDOVER * clamp01(t.handoverRate / HANDOVER_SATURATION);
     }
 
     /**
-     * Advances the failure process for one node by one epoch, given the telemetry
-     * observed at that epoch. Returns true if the node is already dead.
+     * Advances one node by one epoch from its true state, and decides whether it fails.
      *
-     * <p>Failure is sampled from an exponential survival model over the epoch:
-     * P(fail in this epoch) = 1 - exp(-lambda * hours_per_epoch). Once a node fails
-     * it stays failed.
+     * @return the absolute failure time if a failure was scheduled at this step, else NaN
      */
-    public boolean stepAndSample(NodeTelemetry t, double epochLengthInTimeUnits) {
-        if (failureTimes.containsKey(t.nodeId)) {
-            return true;
+    public double step(NodeTelemetry trueState, double epochLength) {
+        Node n = node(trueState.nodeName, trueState.deviceClass);
+        if (!Double.isNaN(n.failureTime) || !FAILURES_ENABLED) {
+            return Double.NaN;
         }
-        long epochIndex = Math.round(t.epoch / Math.max(1.0, epochLengthInTimeUnits));
+        long epochIndex = Math.round(trueState.epoch / Math.max(1.0, epochLength));
+        String cls = trueState.deviceClass;
 
-        double lambda = hazard(t);
-        double pFail = 1.0 - Math.exp(-lambda * HOURS_PER_EPOCH);
-        if (uniform(t.nodeId, epochIndex, 0L) < pFail) {
-            // Place the failure at a uniformly random instant inside this epoch,
-            // drawn from an independent stream so it does not disturb the next
-            // node's survival draw.
-            double offset = uniform(t.nodeId, epochIndex, 1L) * epochLengthInTimeUnits;
-            failureTimes.put(t.nodeId, t.epoch + offset);
-            return false; // it was alive when this snapshot was taken
+        double s = stress(trueState);
+        n.lastStress = s;
+        double noise = Math.exp(WEAR_NOISE_SIGMA * normal(n.hash, epochIndex, FtRandom.S_WEAR_NOISE)
+                - 0.5 * WEAR_NOISE_SIGMA * WEAR_NOISE_SIGMA);
+        double wear = param(BASE_WEAR, cls, 0.0010) * HOURS_PER_EPOCH
+                * Math.exp(param(SENSITIVITY, cls, 1.0) * s) * noise;
+
+        boolean shock = uniform(n.hash, epochIndex, FtRandom.S_SHOCK) < SHOCK_PROBABILITY;
+        if (shock) {
+            wear += SHOCK_MIN + (SHOCK_MAX - SHOCK_MIN)
+                    * uniform(n.hash, epochIndex, FtRandom.S_SHOCK_SIZE);
         }
-        return false;
+        n.health -= wear;
+
+        String cause = null;
+        if (n.health <= 0.0) {
+            cause = shock ? "shock" : "wear-out";
+            n.health = 0.0;
+        } else if ("edge".equals(cls) && !Double.isNaN(trueState.residualEnergy)
+                && trueState.residualEnergy <= BATTERY_EMPTY) {
+            cause = "battery";
+        } else if (uniform(n.hash, epochIndex, FtRandom.S_SUDDEN) < param(SUDDEN_PER_EPOCH, cls, 0.0004)) {
+            cause = "sudden";
+        }
+        if (cause == null) {
+            return Double.NaN;
+        }
+        // The node dies at a uniformly random instant inside the coming epoch.
+        n.failureTime = trueState.epoch
+                + uniform(n.hash, epochIndex, FtRandom.S_FAIL_OFFSET) * epochLength;
+        n.cause = cause;
+        return n.failureTime;
     }
 
-    /** Absolute failure time of a node, or NaN if it survived the simulation. */
-    public double failureTimeOf(int nodeId) {
-        Double f = failureTimes.get(nodeId);
-        return f == null ? Double.NaN : f;
+    /**
+     * The probability that a node fails within the horizon of a report taken now, given
+     * its hidden state: what a predictor with a perfect health sensor and the exact wear
+     * law would output (the oracle policy). It knows the damage already done -- a node
+     * whose health reached zero at this step, by wear or by a shock, is certain to fail --
+     * but not the random draws still to come, so a sudden failure surprises it as it
+     * surprises every other predictor.
+     *
+     * <p>A report at epoch t is labelled by a failure in (t, t + horizon]. Every later
+     * step whose failure window still falls inside the horizon (one, for a two-epoch
+     * horizon) kills the node if its wear at the current stress exhausts the remaining
+     * health, if a shock does, or if a sudden failure is drawn. The sum of the steps'
+     * lognormal wear is matched by a lognormal (Fenton-Wilkinson, exact for one step);
+     * the only approximation is that the next epoch's stress equals this one's. Battery
+     * exhaustion of edge devices is not included: the controller asks about fog nodes.
+     */
+    public double failureProbability(String name, double now, double horizon) {
+        Node n = nodes.get(name);
+        if (n == null || !FAILURES_ENABLED) return 0.0;
+        if (n.health <= 0.0) return 1.0;
+        int steps = Math.max(0, (int) Math.round(horizon / FtCostModel.EPOCH) - 1);
+        if (steps == 0) return 0.0;
+        String cls = n.deviceClass;
+        double h = Math.max(0.0, n.health);
+        double perStep = param(BASE_WEAR, cls, 0.0010) * HOURS_PER_EPOCH
+                * Math.exp(param(SENSITIVITY, cls, 1.0) * n.lastStress);
+        double pWear;
+        if (h <= 0.0) {
+            pWear = 1.0;
+        } else {
+            // Each step's noise factor has mean 1 and variance exp(sigma^2) - 1.
+            double mean = steps * perStep;
+            double var = steps * perStep * perStep
+                    * (Math.exp(WEAR_NOISE_SIGMA * WEAR_NOISE_SIGMA) - 1.0);
+            double s2 = Math.log(1.0 + var / (mean * mean));
+            double mu = Math.log(mean) - 0.5 * s2;
+            pWear = 1.0 - normalCdf((Math.log(h) - mu) / Math.sqrt(s2));
+        }
+        double fatalShock = clamp01((SHOCK_MAX - (h - perStep)) / (SHOCK_MAX - SHOCK_MIN));
+        double pShock = 1.0 - Math.pow(1.0 - SHOCK_PROBABILITY * fatalShock, steps);
+        double pSudden = 1.0 - Math.pow(1.0 - param(SUDDEN_PER_EPOCH, cls, 0.0004), steps);
+        return 1.0 - (1.0 - pWear) * (1.0 - pShock) * (1.0 - pSudden);
     }
 
-    public boolean hasFailed(int nodeId) {
-        return failureTimes.containsKey(nodeId);
+    private static double normalCdf(double z) {
+        return 0.5 * (1.0 + Erf.erf(z / Math.sqrt(2.0)));
+    }
+
+    /** Absolute failure time of a node, or NaN if no failure is scheduled. */
+    public double failureTimeOf(String name) {
+        Node n = nodes.get(name);
+        return n == null ? Double.NaN : n.failureTime;
+    }
+
+    public String failureCauseOf(String name) {
+        Node n = nodes.get(name);
+        return n == null ? "" : n.cause;
+    }
+
+    public boolean hasFailureScheduled(String name) {
+        return !Double.isNaN(failureTimeOf(name));
+    }
+
+    /** True when a failure is scheduled in (now, now + horizon]: the clairvoyant oracle. */
+    public boolean failsWithin(String name, double now, double horizon) {
+        double ft = failureTimeOf(name);
+        return !Double.isNaN(ft) && ft > now && ft <= now + horizon;
     }
 
     public int failedNodeCount() {
-        return failureTimes.size();
+        int c = 0;
+        for (Node n : nodes.values()) {
+            if (!Double.isNaN(n.failureTime)) c++;
+        }
+        return c;
+    }
+
+    public Map<String, Integer> failureCauseCounts() {
+        Map<String, Integer> out = new HashMap<String, Integer>();
+        for (Node n : nodes.values()) {
+            if (!Double.isNaN(n.failureTime)) {
+                Integer c = out.get(n.cause);
+                out.put(n.cause, c == null ? 1 : c + 1);
+            }
+        }
+        return out;
     }
 
     /**
-     * Ground-truth label for a snapshot: does the node fail within (t, t + delta_t]?
-     * This is exactly the event the BBN's target variable F is defined to predict.
+     * Ground-truth label: does the node fail within (t, t + delta_t]? This is exactly
+     * the event the BBN's target variable F is defined to predict.
      */
-    public int labelFor(NodeTelemetry t) {
-        double ft = failureTimeOf(t.nodeId);
+    public int labelFor(String name, double epoch) {
+        double ft = failureTimeOf(name);
         if (Double.isNaN(ft)) return 0;
-        return (ft > t.epoch && ft <= t.epoch + HORIZON_DELTA_T) ? 1 : 0;
+        return (ft > epoch && ft <= epoch + HORIZON_DELTA_T) ? 1 : 0;
     }
 }

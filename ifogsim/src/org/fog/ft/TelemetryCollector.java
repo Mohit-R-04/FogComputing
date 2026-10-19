@@ -7,85 +7,63 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
- * Accumulates telemetry from every instrumented node, drives the ground-truth
- * failure process, and writes one raw CSV per scenario.
+ * Accumulates the reported telemetry of every node and writes one labelled CSV per run.
  *
- * <p>This class deliberately does not sample, split or discretise. Its whole job is
- * to emit everything the simulation observed, labelled, so that
- * {@code build_dataset.py} can decide what to do with it without anyone having to
- * recompile Java to change a sampling rule.
+ * <p>This class deliberately does not sample, split or discretise. Its whole job is to
+ * emit everything the control plane observed, labelled with the ground truth from the
+ * {@link FaultInjector}, so that {@code build_dataset.py} can decide what to do with it
+ * without anyone having to recompile Java to change a sampling rule. A dead node
+ * reports nothing, so no row is ever emitted for a node after its failure.
  *
  * <p>Singleton because iFogSim device callbacks have no natural place to thread a
- * collector reference through. {@link #reset(long, int)} must be called before each
- * run.
+ * collector reference through. {@link #reset()} must be called before each run.
  */
 public class TelemetryCollector {
 
-    private static TelemetryCollector instance;
+    private static TelemetryCollector instance = new TelemetryCollector();
 
     private final List<NodeTelemetry> snapshots = new ArrayList<NodeTelemetry>();
-    private FaultInjector faultInjector;
-    private double epochLength = 100.0;
-    private int scenarioId = -1;
+    private boolean keepRows = true;
     private boolean labelled = false;
 
     private TelemetryCollector() {
     }
 
     public static synchronized TelemetryCollector getInstance() {
-        if (instance == null) {
-            instance = new TelemetryCollector();
-        }
         return instance;
     }
 
-    /** Clears all state and seeds a fresh run. Call before every simulation. */
-    public static synchronized void reset(long seed, int scenarioId) {
+    /** Clears all state. Call before every simulation. */
+    public static synchronized void reset(boolean keepRows) {
         instance = new TelemetryCollector();
-        instance.faultInjector = new FaultInjector(seed);
-        instance.scenarioId = scenarioId;
+        instance.keepRows = keepRows;
     }
 
-    public void setEpochLength(double epochLength) {
-        this.epochLength = epochLength;
-    }
-
-    /**
-     * Records one snapshot and advances that node's failure process by one epoch.
-     * Snapshots taken after a node has already died are discarded: a dead node
-     * reports no telemetry, and keeping such rows would leak the label.
-     */
     public void record(NodeTelemetry t) {
-        if (faultInjector.stepAndSample(t, epochLength)) {
-            return;
+        if (keepRows) {
+            snapshots.add(t);
+            labelled = false;
         }
-        snapshots.add(t.withScenario(scenarioId));
     }
 
     public int snapshotCount() {
         return snapshots.size();
     }
 
-    public int failedNodeCount() {
-        return faultInjector.failedNodeCount();
-    }
-
-    /**
-     * Puts the snapshots in a canonical order, by node then by time.
-     *
-     * <p>They arrive in whatever order CloudSim delivered the resource-management
-     * events. Sorting here means the output file does not depend on that order.
-     */
+    /** Canonical order (node name, then time), independent of CloudSim event order. */
     private void sortCanonically() {
         Collections.sort(snapshots, new Comparator<NodeTelemetry>() {
             @Override
             public int compare(NodeTelemetry a, NodeTelemetry b) {
-                if (a.nodeId != b.nodeId) return Integer.compare(a.nodeId, b.nodeId);
+                if (a.level != b.level) return Integer.compare(a.level, b.level);
+                int byName = a.nodeName.compareTo(b.nodeName);
+                if (byName != 0) return byName;
                 return Double.compare(a.epoch, b.epoch);
             }
         });
@@ -95,9 +73,11 @@ public class TelemetryCollector {
     private void labelAll() {
         if (labelled) return;
         sortCanonically();
+        FaultInjector injector = RunContext.injector();
         for (NodeTelemetry t : snapshots) {
-            t.groundTruthFail = faultInjector.labelFor(t);
-            t.failureTime = faultInjector.failureTimeOf(t.nodeId);
+            t.groundTruthFail = injector.labelFor(t.nodeName, t.epoch);
+            t.failureTime = injector.failureTimeOf(t.nodeName);
+            t.failureCause = injector.failureCauseOf(t.nodeName);
         }
         labelled = true;
     }
@@ -111,7 +91,7 @@ public class TelemetryCollector {
         return n;
     }
 
-    /** Writes every retained snapshot, labelled, for this scenario. */
+    /** Writes every retained snapshot, labelled. */
     public void write(String path) throws IOException {
         labelAll();
         File f = new File(path);
@@ -128,15 +108,15 @@ public class TelemetryCollector {
         }
     }
 
-    /** Per-level snapshot and positive counts, for the run summary. */
-    public Map<Integer, int[]> levelBreakdown() {
+    /** Per-class snapshot and positive counts, for the run summary. */
+    public Map<String, int[]> classBreakdown() {
         labelAll();
-        Map<Integer, int[]> out = new HashMap<Integer, int[]>();
+        Map<String, int[]> out = new TreeMap<String, int[]>();
         for (NodeTelemetry t : snapshots) {
-            int[] c = out.get(t.level);
+            int[] c = out.get(t.deviceClass);
             if (c == null) {
                 c = new int[2];
-                out.put(t.level, c);
+                out.put(t.deviceClass, c);
             }
             c[0]++;
             if (t.groundTruthFail == 1) c[1]++;
@@ -144,19 +124,16 @@ public class TelemetryCollector {
         return out;
     }
 
-    /**
-     * How many rows actually carry a reading for each optional channel.
-     *
-     * <p>Printed after every run so a channel that silently stops reporting is
-     * visible immediately rather than discovered later in the Python.
-     */
-    public Map<String, int[]> channelCoverage() {
-        Map<String, int[]> out = new HashMap<String, int[]>();
-        out.put("jitter_pktloss", new int[]{0, snapshots.size()});
-        out.put("temperature", new int[]{0, snapshots.size()});
-        for (NodeTelemetry t : snapshots) {
-            if (!Double.isNaN(t.jitterPktLoss)) out.get("jitter_pktloss")[0]++;
-            if (!Double.isNaN(t.temperature)) out.get("temperature")[0]++;
+    /** How many rows carry a reading for each channel, as a percentage. */
+    public Map<String, Integer> channelCoverage() {
+        Map<String, Integer> out = new LinkedHashMap<String, Integer>();
+        if (snapshots.isEmpty()) return out;
+        for (String ch : NodeTelemetry.CHANNELS) {
+            int present = 0;
+            for (NodeTelemetry t : snapshots) {
+                if (!Double.isNaN(t.value(ch))) present++;
+            }
+            out.put(ch, (int) Math.round(100.0 * present / snapshots.size()));
         }
         return out;
     }

@@ -1,14 +1,12 @@
 package org.fog.ft;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.cloudbus.cloudsim.Host;
 import org.cloudbus.cloudsim.Log;
@@ -30,9 +28,8 @@ import org.fog.entities.Sensor;
 import org.fog.entities.Tuple;
 import org.fog.mobilitydata.DataParser;
 import org.fog.mobilitydata.Location;
-import org.fog.placement.Controller;
 import org.fog.placement.ModuleMapping;
-import org.fog.placement.ModulePlacementEdgewards;
+import org.fog.placement.ModulePlacementMapping;
 import org.fog.policy.AppModuleAllocationPolicy;
 import org.fog.scheduler.StreamOperatorScheduler;
 import org.fog.utils.Config;
@@ -42,279 +39,257 @@ import org.fog.utils.TimeKeeper;
 import org.fog.utils.distribution.DeterministicDistribution;
 
 /**
- * Runs one scenario of the sweep and writes its labelled telemetry.
+ * Builds and runs one simulation: one scenario, one seed, one fault-tolerance policy.
  *
- * <p>The topology has exactly three tiers: cloud, fog nodes and edge devices.
- * The Melbourne CBD edge-resource set supplies one cloud and the original gateway
- * resources, which are used as fog nodes; proxy resources are intentionally excluded.
- * Battery-powered user devices are added as edge devices. Every node is an
- * {@link InstrumentedFogDevice}, so telemetry is emitted at each resource-management
- * epoch.
+ * <p>The topology has exactly three tiers. The Melbourne CBD edge-resource set supplies
+ * one cloud and the 118 gateway resources, which are the fog nodes (proxy resources are
+ * not instantiated); battery-powered user devices are the edge tier. Every node is an
+ * {@link InstrumentedFogDevice}. The workload is a cardiac-monitoring application, the
+ * latency-critical use case the paper cites: vitals are filtered on the user's device,
+ * analysed by an ecg_analyser on the user's serving node, and the verdict raises the
+ * alarm locally; summaries are archived in the cloud.
  *
- * <p>The workload is a cardiac-monitoring application -- the latency-critical use
- * case the paper cites as motivation -- placed edgeward.
+ * <p>Every fog node (and the cloud) hosts an ecg_analyser instance, so wherever a user
+ * is served -- after a handover, a migration or a recovery -- its analysis keeps working.
+ * Under {@link FtPolicy#CLOUD_ONLY} the analyser exists only in the cloud.
  *
- * <p>Every capacity, power model, module size and emission rate comes from the
- * {@link ScenarioSpec} handed in, which is how the sweep produces genuinely
- * different simulator behaviour from one run to the next.
+ * <p>The same code path produces the training telemetry ({@link FtPolicy#NO_FT}, with
+ * the CSV kept) and every closed-loop experiment, so the model is evaluated on exactly
+ * the system it was trained on.
  *
- * <p><b>Run from the project root.</b> {@link DataParser} resolves
- * {@code ./dataset/edgeResources-melbCBD.csv} relative to the working directory.
- *
- * <p>Entry point is {@link ScenarioSweep}, not this class.
+ * <p><b>Run from {@code ifogsim/}.</b> {@link DataParser} resolves {@code ./dataset/...}
+ * relative to the working directory.
  */
 public class MelbCBDFaultToleranceSim {
 
     private static final String APP_ID = "cardiac_monitoring";
     private static final double SENSOR_LATENCY = 1.0;
-
-    private static final List<FogDevice> fogDevices = new ArrayList<FogDevice>();
-    private static final List<Sensor> sensors = new ArrayList<Sensor>();
-    private static final List<Actuator> actuators = new ArrayList<Actuator>();
-    private static final List<FogDevice> fogDevicesForMobility = new ArrayList<FogDevice>();
-    private static final List<FogDevice> edgeDevices = new ArrayList<FogDevice>();
-    private static final Map<Integer, Location> fogLocations =
-            new HashMap<Integer, Location>();
-
-    private static MobilityDriver mobilityDriver;
-    private static ScenarioSpec spec;
-    private static final AtomicBoolean WRITTEN = new AtomicBoolean(false);
-
+    /** End-to-end deadline of a critical user's alarm loop, in ms. */
+    public static final double CRITICAL_LOOP_DEADLINE = 150.0;
+    /** Temperature rise at full utilisation: passive fog enclosures vs a cooled cloud. */
+    private static final double FOG_THERMAL_RISE_C = 45.0;
+    private static final double CLOUD_THERMAL_RISE_C = 12.0;
     /**
-     * Runs one scenario end to end and writes its telemetry to {@code outCsv}.
+     * Scale on the analyser's CPU cost per tuple. At the scenario table's raw values one
+     * user needed 48% of a gateway in the baseline and 154% in "starved-fog", and forty
+     * users needed 120% of the cloud: every queue grew without bound and even a run with
+     * no failures delivered under half of its alarms. Scaled, a gateway serves several
+     * users as it would in deployment, hot spots still saturate, and the twelve regimes
+     * keep their relative loads.
      */
-    public static void runScenario(ScenarioSpec scenario, long seed, String outCsv) {
-        spec = scenario;
+    public static final double ANALYSIS_COST_SCALE = 0.25;
 
-        System.out.println("=== iFogSim telemetry generation ===");
-        System.out.println(scenario);
-        System.out.println("seed=" + seed + "  output=" + outCsv);
+    private MelbCBDFaultToleranceSim() {
+    }
 
-        fogDevices.clear();
-        sensors.clear();
-        actuators.clear();
-        fogDevicesForMobility.clear();
-        edgeDevices.clear();
-        fogLocations.clear();
-        WRITTEN.set(false);
+    /** The objects of one built topology. */
+    private static final class Built {
+        InstrumentedFogDevice cloud;
+        final List<InstrumentedFogDevice> fogs = new ArrayList<InstrumentedFogDevice>();
+        final List<InstrumentedFogDevice> edges = new ArrayList<InstrumentedFogDevice>();
+        final List<FogDevice> all = new ArrayList<FogDevice>();
+        final List<Sensor> sensors = new ArrayList<Sensor>();
+        final List<Actuator> actuators = new ArrayList<Actuator>();
+        final Map<Integer, Location> fogLocations = new HashMap<Integer, Location>();
+    }
 
-        try {
-            Log.disable();
-            Config.MAX_SIMULATION_TIME = scenario.simulationTime;
+    /** Runs one configuration end to end; returns the controller for its metrics. */
+    public static FaultToleranceController run(RunConfig cfg) throws Exception {
+        ScenarioSpec spec = cfg.spec;
+        RunContext.reset(cfg.seed, spec.id, cfg.dropout, cfg.dropoutRate, cfg.simTime);
+        SessionRegistry.reset();
+        TelemetryCollector.reset(cfg.telemetryCsv != null);
+        EventLog.setMode(cfg.log);
+        FtCostModel.migrationCostScale = cfg.migrationCostScale;
 
-            TelemetryCollector.reset(seed, scenario.id);
-            TelemetryCollector.getInstance().setEpochLength(Config.RESOURCE_MGMT_INTERVAL);
+        Log.disable();
+        Config.MAX_SIMULATION_TIME = (int) Math.round(cfg.simTime);
+        CloudSim.init(1, Calendar.getInstance(), false);
 
-            CloudSim.init(1, Calendar.getInstance(), false);
+        FogBroker broker = new FogBroker("broker");
+        Application application = createApplication(APP_ID, broker.getId(), spec, cfg.seed);
+        application.setUserId(broker.getId());
 
-            FogBroker broker = new FogBroker("broker");
-            Application application = createApplication(APP_ID, broker.getId(), seed);
-            application.setUserId(broker.getId());
+        Built b = createTopology(broker.getId(), APP_ID, spec, cfg.seed);
+        RiskPredictor predictor = buildPredictor(cfg);
+        HealthIndexPredictor healthIndex = cfg.policy == FtPolicy.THRESHOLD
+                ? HealthIndexPredictor.load(cfg.healthIndexModel) : null;
 
-            createTopology(broker.getId(), APP_ID, seed);
+        QuietController master = new QuietController("master-controller", b.all, b.sensors, b.actuators);
+        Topology topology = new Topology(b.cloud, b.fogs, b.edges, b.fogLocations,
+                spec.fogUplinkLatency + 20.0);
+        MobilityDriver mobility = new MobilityDriver("mobility-driver", b.edges, topology, cfg.seed);
+        FaultToleranceController ft = new FaultToleranceController("ft-controller", cfg.policy,
+                predictor, healthIndex, topology, spec, cfg.simTime);
+        ft.setAblation(cfg.riskPlacement, cfg.proactiveMigration, cfg.selectiveReplication);
+        mobility.setController(ft);
+        mobility.associateInitially();
+        for (InstrumentedFogDevice d : allInstrumented(b)) d.markTopologyBuilt();
 
-            // Users walk the real melbCBD traces and re-associate with their nearest
-            // gateway, which is what gives handover_rate and uplink_latency their
-            // variation.
-            mobilityDriver = new MobilityDriver("mobility-driver", edgeDevices,
-                    fogDevicesForMobility, fogLocations, seed);
+        ModuleMapping mapping = ModuleMapping.createModuleMapping();
+        mapping.addModuleToDevice("archival_store", "cloud");
+        mapping.addModuleToDevice("ecg_analyser", "cloud");
+        if (!cfg.policy.cloudHosted()) {
+            for (InstrumentedFogDevice f : b.fogs) mapping.addModuleToDevice("ecg_analyser", f.getName());
+        }
+        for (InstrumentedFogDevice e : b.edges) mapping.addModuleToDevice("client", e.getName());
+        master.submitApplication(application, 0, new ModulePlacementMapping(b.all, application, mapping));
 
-            for (FogDevice d : fogDevices) {
-                if (d instanceof InstrumentedFogDevice) {
-                    ((InstrumentedFogDevice) d).markTopologyBuilt();
-                }
-            }
+        TimeKeeper.getInstance().setSimulationStartTime(Calendar.getInstance().getTimeInMillis());
+        long wallStart = System.currentTimeMillis();
+        EventLog.emit("START", 0.0, "scenario", spec.id, "label", spec.label, "policy", cfg.policy.key,
+                "predictor", predictor == null ? "-" : predictor.name(), "seed", cfg.seed,
+                "fog", b.fogs.size(), "edge", b.edges.size(), "sim_time", cfg.simTime);
 
-            ModuleMapping moduleMapping = ModuleMapping.createModuleMapping();
-            moduleMapping.addModuleToDevice("archival_store", "cloud");
-            for (FogDevice device : fogDevices) {
-                if (device.getName().startsWith("edge-")) {
-                    moduleMapping.addModuleToDevice("client", device.getName());
-                }
-            }
+        CloudSim.startSimulation();
 
-            Controller controller = new Controller("master-controller", fogDevices,
-                    sensors, actuators);
-            controller.submitApplication(application, 0,
-                    new ModulePlacementEdgewards(fogDevices, sensors, actuators,
-                            application, moduleMapping));
+        double end = QuietController.endTime();
+        if (Double.isNaN(end)) end = cfg.simTime;
+        double wall = (System.currentTimeMillis() - wallStart) / 1000.0;
 
-            TimeKeeper.getInstance().setSimulationStartTime(
-                    Calendar.getInstance().getTimeInMillis());
+        TelemetryCollector collector = TelemetryCollector.getInstance();
+        if (cfg.telemetryCsv != null) collector.write(cfg.telemetryCsv);
+        String predictorName = predictor == null ? "-" : predictor.name();
+        if (cfg.summaryJson != null) ft.writeSummary(cfg.summaryJson, end, predictorName);
+        if (cfg.printSummary) printSummary(cfg, b, ft, end, wall, predictorName);
+        EventLog.emit("END", end, "summary", cfg.summaryJson == null ? "" : cfg.summaryJson,
+                "wall_seconds", wall);
+        return ft;
+    }
 
-            System.out.println("devices=" + fogDevices.size()
-                    + "  sensors=" + sensors.size()
-                    + "  actuators=" + actuators.size());
-            System.out.println("running to t=" + Config.MAX_SIMULATION_TIME + " ...");
+    private static List<InstrumentedFogDevice> allInstrumented(Built b) {
+        List<InstrumentedFogDevice> out = new ArrayList<InstrumentedFogDevice>();
+        out.add(b.cloud);
+        out.addAll(b.fogs);
+        out.addAll(b.edges);
+        return out;
+    }
 
-            // iFogSim's Controller calls System.exit(0) when it handles
-            // STOP_SIMULATION, so nothing placed after startSimulation() would ever
-            // run. A shutdown hook writes the output without patching any existing
-            // iFogSim source file.
-            installOutputHook(outCsv);
-
-            CloudSim.startSimulation();
-            CloudSim.stopSimulation();
-
-            writeOutput(outCsv);   // only reached if iFogSim ever stops exiting
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.err.println("scenario " + scenario.id + " failed");
-            System.exit(1);
+    private static RiskPredictor buildPredictor(RunConfig cfg) throws Exception {
+        switch (cfg.policy) {
+            case BBN: return new BbnPredictor(BbnEngine.load(cfg.bbnModel), cfg.onlineLearning);
+            case ML: return MlPredictor.load(cfg.mlModel);
+            case ORACLE: return new OraclePredictor();
+            case THRESHOLD: return HealthIndexPredictor.load(cfg.healthIndexModel);
+            default: return null;
         }
     }
 
-    private static void installOutputHook(final String outCsv) {
-        Runtime.getRuntime().addShutdownHook(new Thread() {
-            @Override
-            public void run() {
-                try {
-                    writeOutput(outCsv);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-    }
-
-    private static void writeOutput(String outCsv) throws Exception {
-        if (!WRITTEN.compareAndSet(false, true)) {
-            return;
-        }
+    private static void printSummary(RunConfig cfg, Built b, FaultToleranceController ft,
+                                     double end, double wall, String predictorName) {
+        org.json.simple.JSONObject s = ft.summary(end, predictorName);
         TelemetryCollector c = TelemetryCollector.getInstance();
-        c.write(outCsv);
-
-        System.out.println();
-        System.out.println("=== scenario " + spec.id + " (" + spec.label + ") ===");
-        System.out.println("snapshots written  : " + c.snapshotCount());
-        System.out.println("nodes that failed  : " + c.failedNodeCount());
-        System.out.println("positive snapshots : " + c.positiveCount());
-        System.out.println("handovers observed : "
-                + (mobilityDriver == null ? 0 : mobilityDriver.getHandoverCount()));
-        System.out.println("per level (snapshots / positives):");
-        Map<Integer, int[]> bd = c.levelBreakdown();
-        for (int level = 0; level <= 2; level++) {
-            int[] v = bd.get(level);
-            if (v != null) {
-                System.out.println("  level " + level + " : " + v[0] + " / " + v[1]);
+        System.out.println(String.format(Locale.ROOT,
+                "=== scenario %02d (%s)  policy=%s  seed=%d  %s ===",
+                cfg.spec.id, cfg.spec.label, cfg.policy.key, cfg.seed,
+                cfg.dropout == RunContext.Dropout.NONE ? "" : "dropout=" + cfg.dropout + "@" + cfg.dropoutRate));
+        System.out.println(String.format(Locale.ROOT,
+                "devices            : 1 cloud, %d fog, %d edge; sim time %.0f; wall %.1f s",
+                b.fogs.size(), b.edges.size(), end, wall));
+        System.out.println(String.format(Locale.ROOT,
+                "failures           : fog %s (%s with users), edge %s; causes %s",
+                s.get("fog_failures"), s.get("fog_failures_with_users"), s.get("edge_failures"),
+                s.get("failure_causes")));
+        System.out.println(String.format(Locale.ROOT,
+                "sessions           : hit %s, evacuated before failure %s",
+                s.get("sessions_hit"), s.get("sessions_evacuated")));
+        System.out.println(String.format(Locale.ROOT,
+                "service            : downtime %.1f, availability %.5f, delivered %s",
+                ((Number) s.get("downtime_total")).doubleValue(),
+                ((Number) s.get("availability")).doubleValue(), s.get("delivery_ratio")));
+        System.out.println(String.format(Locale.ROOT,
+                "latency            : loop mean %s, p95 %s, critical deadline misses %s",
+                s.get("loop_delay_mean"), s.get("loop_delay_p95"), s.get("critical_deadline_miss_ratio")));
+        System.out.println(String.format(Locale.ROOT,
+                "actions            : migrations %s (unnecessary %s), standby ratio %.3f, replication %.2f MB",
+                s.get("migrations_started"), s.get("migrations_unnecessary"),
+                ((Number) s.get("standby_ratio")).doubleValue(),
+                ((Number) s.get("replication_mb")).doubleValue()));
+        if (cfg.telemetryCsv != null) {
+            System.out.println("telemetry          : " + c.snapshotCount() + " rows, "
+                    + c.positiveCount() + " positive -> " + cfg.telemetryCsv);
+            Map<String, int[]> bd = c.classBreakdown();
+            for (Map.Entry<String, int[]> e : bd.entrySet()) {
+                System.out.println("  " + e.getKey() + " : " + e.getValue()[0] + " rows / "
+                        + e.getValue()[1] + " positive");
             }
+            System.out.println("channel coverage % : " + c.channelCoverage());
         }
-        System.out.println("optional channel coverage:");
-        for (Map.Entry<String, int[]> e : c.channelCoverage().entrySet()) {
-            int[] v = e.getValue();
-            int pct = v[1] == 0 ? 0 : (100 * v[0] / v[1]);
-            System.out.println("  " + e.getKey() + " : " + v[0] + "/" + v[1]
-                    + " rows reported (" + pct + "%)");
-        }
-        System.out.println("written to " + outCsv);
+        if (cfg.summaryJson != null) System.out.println("summary            : " + cfg.summaryJson);
     }
 
-    // ---- topology ------------------------------------------------------------
+    // ---- topology --------------------------------------------------------------------------
 
-    private static void createTopology(int userId, String appId, long seed) throws Exception {
+    private static Built createTopology(int userId, String appId, ScenarioSpec spec, long seed)
+            throws Exception {
         DataParser parser = new DataParser();
         parser.parseResourceData();
-
-        Map<String, Integer> dataIdToEntityId = new HashMap<String, Integer>();
-        Map<String, String[]> rawRows = readRawRows();
+        Built b = new Built();
 
         // Level 0: the cloud datacentre.
         for (String dataId : parser.levelwiseResources.get(0)) {
-            InstrumentedFogDevice cloud = createDevice("cloud", 0);
-            cloud.setParentId(-1);
-            fogDevices.add(cloud);
-            dataIdToEntityId.put(dataId, cloud.getId());
+            b.cloud = createDevice("cloud", 0, spec);
+            b.cloud.setParentId(-1);
+            b.all.add(b.cloud);
+            break;
         }
 
-        // Level 1: fog nodes. The source CSV's gateway resources are the fog tier.
-        // Proxy resources are deliberately not instantiated, so the generated data
-        // contains only cloud, fog and edge device classes.
-        List<InstrumentedFogDevice> gateways = new ArrayList<InstrumentedFogDevice>();
+        // Level 1: fog nodes, from the dataset's gateway resources.
         for (String dataId : parser.levelwiseResources.get(2)) {
-            InstrumentedFogDevice fog = createDevice("fog-" + idOf(dataId), 1);
-            fog.setParentId(fogDevices.get(0).getId());
+            InstrumentedFogDevice fog = createDevice("fog-" + dataId.substring(dataId.indexOf('_') + 1), 1, spec);
+            fog.setParentId(b.cloud.getId());
             fog.setUplinkLatency(spec.fogUplinkLatency);
-            fogDevices.add(fog);
-            gateways.add(fog);
-            fogDevicesForMobility.add(fog);
-            fogLocations.put(fog.getId(), parser.resourceLocationData.get(dataId));
-            dataIdToEntityId.put(dataId, fog.getId());
+            b.all.add(fog);
+            b.fogs.add(fog);
+            b.fogLocations.put(fog.getId(), parser.resourceLocationData.get(dataId));
         }
 
-        // Level 2: edge devices, attached to fog nodes.
+        // Level 2: edge devices (users), each with its sensors and alarm actuator.
         int sensorIndex = 0;
         for (int i = 0; i < spec.edgeCount; i++) {
-            InstrumentedFogDevice edge = createDevice("edge-" + i, 2);
-            InstrumentedFogDevice fog = gateways.get(i % gateways.size());
-            edge.setParentId(fog.getId());
+            InstrumentedFogDevice edge = createDevice("edge-" + i, 2, spec);
+            edge.setParentId(b.fogs.get(i % b.fogs.size()).getId());
             edge.setUplinkLatency(2);
-            fogDevices.add(edge);
-            edgeDevices.add(edge);
+            b.all.add(edge);
+            b.edges.add(edge);
+            SessionRegistry.get().addSession(
+                    new ServiceSession(edge.getId(), edge.getName(), Criticality.assign(seed, edge.getName())));
 
             for (int k = 0; k < spec.sensorsPerEdge; k++) {
                 Sensor vitals = new Sensor("s-" + sensorIndex, "VITALS", userId, appId,
                         new DeterministicDistribution(spec.sensorInterval));
                 vitals.setGatewayDeviceId(edge.getId());
                 vitals.setLatency(SENSOR_LATENCY);
-                sensors.add(vitals);
+                b.sensors.add(vitals);
                 sensorIndex++;
             }
-
-            Actuator alarm = new Actuator("a-" + i, userId, appId, "ALARM");
+            InstrumentedActuator alarm = new InstrumentedActuator("a-" + i, userId, appId, "ALARM",
+                    edge.getId(), CRITICAL_LOOP_DEADLINE);
             alarm.setGatewayDeviceId(edge.getId());
             alarm.setLatency(SENSOR_LATENCY);
-            actuators.add(alarm);
+            b.actuators.add(alarm);
         }
+        return b;
     }
 
-    private static String idOf(String dataId) {
-        return dataId.substring(dataId.indexOf('_') + 1);
-    }
-
-    /** Re-reads the resource CSV for the parent column, which DataParser discards. */
-    private static Map<String, String[]> readRawRows() throws Exception {
-        Map<String, String[]> rows = new HashMap<String, String[]>();
-        BufferedReader r = new BufferedReader(
-                new FileReader("./dataset/edgeResources-melbCBD.csv"));
-        try {
-            String line;
-            while ((line = r.readLine()) != null) {
-                String[] data = line.split(",");
-                if (data.length > 6 && data[6].equals("VIC")) {
-                    rows.put("res_" + data[0], data);
-                }
-            }
-        } finally {
-            r.close();
-        }
-        return rows;
-    }
-
-    /**
-     * Creates one instrumented device sized by the scenario.
-     *
-     * <p>Capacity, memory and power model all come from {@link ScenarioSpec}, so a
-     * gateway in the "starved-gateways" scenario is a materially different piece of
-     * hardware from the same gateway in "fat-gateways" -- which is the mechanism by
-     * which the sweep produces varied telemetry.
-     */
-    private static InstrumentedFogDevice createDevice(String name, int level) throws Exception {
+    /** One instrumented device sized by the scenario. */
+    private static InstrumentedFogDevice createDevice(String name, int level, ScenarioSpec spec)
+            throws Exception {
         long mips = spec.mipsFor(level);
         int ram = spec.ramFor(level);
         double[] power = spec.powerFor(level);
 
         String deviceClass;
-        long upBw, downBw;
+        long upBw;
+        long downBw;
         switch (level) {
-            case 0:  deviceClass = "cloud"; upBw = 100; downBw = 10000; break;
-            case 1:  deviceClass = "fog";   upBw = spec.fogUplinkBw; downBw = 10000; break;
-            default: deviceClass = "edge";  upBw = 10000; downBw = 270; break;
+            case 0: deviceClass = "cloud"; upBw = 100; downBw = 10000; break;
+            case 1: deviceClass = "fog"; upBw = spec.fogUplinkBw; downBw = 10000; break;
+            default: deviceClass = "edge"; upBw = 10000; downBw = 270; break;
         }
 
         List<Pe> peList = new ArrayList<Pe>();
         peList.add(new Pe(0, new PeProvisionerOverbooking(mips)));
-
         PowerHost host = new PowerHost(
                 FogUtils.generateEntityId(),
                 new RamProvisionerSimple(ram),
@@ -323,7 +298,6 @@ public class MelbCBDFaultToleranceSim {
                 peList,
                 new StreamOperatorScheduler(peList),
                 new FogLinearPowerModel(power[0], power[1]));
-
         List<Host> hostList = new ArrayList<Host>();
         hostList.add(host);
 
@@ -333,48 +307,42 @@ public class MelbCBDFaultToleranceSim {
                 Config.FOG_DEVICE_COST_PER_MEMORY, Config.FOG_DEVICE_COST_PER_STORAGE,
                 Config.FOG_DEVICE_COST_PER_BW);
 
+        boolean thermalSensor = level != 2;
+        double thermalRise = level == 0 ? CLOUD_THERMAL_RISE_C : FOG_THERMAL_RISE_C;
         InstrumentedFogDevice device = new InstrumentedFogDevice(
                 name, characteristics, new AppModuleAllocationPolicy(hostList),
                 new LinkedList<Storage>(), 10, upBw, downBw, 0,
                 (level == 0) ? 0.01 : 0.0, deviceClass,
-                spec.energyBudgetFor(level));
+                spec.energyBudgetFor(level), power[0], thermalSensor, thermalRise);
         device.setLevel(level);
         return device;
     }
 
-    // ---- application ---------------------------------------------------------
+    // ---- application ------------------------------------------------------------------------
 
     /**
-     * A cardiac-monitoring pipeline: vitals are filtered on the user device, analysed
-     * at the edge, an alarm is raised locally, and summaries are archived in the cloud.
-     *
-     * <p>Module sizes and the analysis tuple's CPU cost come from the scenario.
-     * {@code ModulePlacementEdgewards} decides placement on rate x tupleCpuLength
-     * rather than on declared RAM or MIPS, so the tuple cost is what actually
-     * determines whether the analyser lands on a handset or is shifted north onto a
-     * gateway -- and therefore which tier carries the load in this scenario.
+     * Cardiac monitoring: vitals are filtered on the user device (client), analysed by an
+     * ecg_analyser on the serving node, and the verdict raises the alarm locally; patient
+     * summaries are archived in the cloud. Module sizes and the analysis tuple's CPU cost
+     * come from the scenario.
      */
-    private static Application createApplication(String appId, int userId, long seed) {
+    private static Application createApplication(String appId, int userId, ScenarioSpec spec, long seed) {
         Application application = Application.createApplication(appId, userId);
 
         application.addAppModule("client", spec.clientRam, spec.clientMips, 10000);
         application.addAppModule("ecg_analyser", spec.analyserRam, spec.analyserMips, 10000);
         application.addAppModule("archival_store", 100, 1000, 10000);
 
-        application.addAppEdge("VITALS", "client", 1000, 500, "VITALS",
-                Tuple.UP, AppEdge.SENSOR);
-        application.addAppEdge("client", "ecg_analyser", spec.analysisTupleMi, 500,
+        application.addAppEdge("VITALS", "client", 1000, 500, "VITALS", Tuple.UP, AppEdge.SENSOR);
+        application.addAppEdge("client", "ecg_analyser", spec.analysisTupleMi * ANALYSIS_COST_SCALE, 500,
                 "FILTERED_VITALS", Tuple.UP, AppEdge.MODULE);
         application.addAppEdge("ecg_analyser", "archival_store", 100, 1000, 1000,
                 "PATIENT_SUMMARY", Tuple.UP, AppEdge.MODULE);
         application.addAppEdge("ecg_analyser", "client", 14, 500,
                 "ARRHYTHMIA_VERDICT", Tuple.DOWN, AppEdge.MODULE);
-        application.addAppEdge("client", "ALARM", 100, 50, "ALARM_SIGNAL",
-                Tuple.DOWN, AppEdge.ACTUATOR);
+        application.addAppEdge("client", "ALARM", 100, 50, "ALARM_SIGNAL", Tuple.DOWN, AppEdge.ACTUATOR);
 
-        // SeededFractionalSelectivity, not iFogSim's FractionalSelectivity: the
-        // latter decides with unseeded Math.random(), which alone made the whole
-        // harness non-reproducible. See that class for the measurements.
+        // Seeded selectivity: iFogSim's FractionalSelectivity uses unseeded Math.random().
         application.addTupleMapping("client", "VITALS", "FILTERED_VITALS",
                 new SeededFractionalSelectivity(0.9, seed ^ 0x11L));
         application.addTupleMapping("ecg_analyser", "FILTERED_VITALS", "ARRHYTHMIA_VERDICT",
@@ -387,7 +355,6 @@ public class MelbCBDFaultToleranceSim {
         }});
         List<AppLoop> loops = new ArrayList<AppLoop>() {{ add(loop); }};
         application.setLoops(loops);
-
         return application;
     }
 }

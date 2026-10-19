@@ -1,56 +1,68 @@
-"""Classical scikit-learn baselines for raw iFogSim telemetry."""
+"""Classical machine-learning baselines on the explicit feature matrix."""
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
-from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
-from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.neural_network import MLPClassifier
 
-NUMERIC = [
-    "cpu_util", "ram_util", "queue_depth", "uplink_latency",
-    "jitter_pktloss", "handover_rate", "residual_energy",
-]
-CATEGORICAL = ["device_class"]
+from features import FeatureSpec
+
+SEED = 999
 
 
-def matrix(rows):
-    return pd.DataFrame([
-        {k: (None if row.get(k, "") == "" else row.get(k)) for k in NUMERIC + CATEGORICAL}
-        for row in rows
-    ])
+class SklearnModel:
+    """A scikit-learn estimator behind the explicit FeatureSpec."""
+
+    family = "machine learning"
+    explains = False
+    handles_missing = "imputes (median + indicator)"
+
+    def __init__(self, name: str, factory, standardise: bool = False, kind: str = "forest"):
+        self.name = name
+        self.factory = factory
+        self.standardise = standardise
+        self.kind = kind
+
+    def fit(self, df: pd.DataFrame) -> "SklearnModel":
+        self.spec = FeatureSpec(standardise=self.standardise).fit(df)
+        self.model = self.factory()
+        self.model.fit(self.spec.transform(df), df["ground_truth_fail"].to_numpy(dtype=int))
+        return self
+
+    def predict_proba(self, df: pd.DataFrame) -> np.ndarray:
+        return self.model.predict_proba(self.spec.transform(df))[:, 1]
 
 
-def preprocessor():
-    numeric = Pipeline([
-        ("impute", SimpleImputer(strategy="median", add_indicator=True)),
-        ("scale", StandardScaler()),
-    ])
-    categorical = Pipeline([
-        ("impute", SimpleImputer(strategy="most_frequent")),
-        ("onehot", OneHotEncoder(handle_unknown="ignore")),
-    ])
-    return ColumnTransformer([("numeric", numeric, NUMERIC), ("categorical", categorical, CATEGORICAL)])
+def logistic(class_weight=None):
+    return SklearnModel(
+        "Logistic regression",
+        lambda: LogisticRegression(max_iter=2000, C=1.0, class_weight=class_weight, random_state=SEED),
+        standardise=True, kind="linear")
 
 
-def models():
-    return {
-        "Logistic regression": Pipeline([
-            ("features", preprocessor()),
-            ("model", LogisticRegression(max_iter=1000, random_state=999)),
-        ]),
-        "Random forest": Pipeline([
-            ("features", preprocessor()),
-            ("model", RandomForestClassifier(n_estimators=300, min_samples_leaf=4,
-                                               class_weight=None,
-                                               random_state=999, n_jobs=-1)),
-        ]),
-        "Histogram gradient boosting": Pipeline([
-            ("features", preprocessor()),
-            ("model", HistGradientBoostingClassifier(max_iter=250, learning_rate=0.06,
-                                                       max_leaf_nodes=15, l2_regularization=1.0,
-                                                       random_state=999)),
-        ]),
-    }
+def random_forest(class_weight=None):
+    return SklearnModel(
+        "Random forest",
+        lambda: RandomForestClassifier(n_estimators=200, min_samples_leaf=10, max_features="sqrt",
+                                       class_weight=class_weight, n_jobs=-1, random_state=SEED),
+        kind="forest")
+
+
+def gradient_boosting(class_weight=None):
+    return SklearnModel(
+        "Gradient boosting",
+        lambda: HistGradientBoostingClassifier(max_iter=300, learning_rate=0.06, max_leaf_nodes=31,
+                                               l2_regularization=1.0, class_weight=class_weight,
+                                               early_stopping=False, random_state=SEED),
+        kind="gbdt")
+
+
+def mlp():
+    return SklearnModel(
+        "Neural network (MLP)",
+        lambda: MLPClassifier(hidden_layer_sizes=(64, 32), alpha=1e-4, batch_size=512,
+                              learning_rate_init=1e-3, max_iter=60, early_stopping=True,
+                              n_iter_no_change=6, random_state=SEED),
+        standardise=True, kind="mlp")

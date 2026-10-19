@@ -1,0 +1,87 @@
+<mxfile host="app.diagrams.net" type="device">
+  <diagram name="BBN Model" id="bbn1">
+    <mxGraphModel dx="1400" dy="800" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1180" pageHeight="600" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="hdr1" value="EVIDENCE  (observed telemetry)" style="text;html=1;align=center;fontFamily=Arial;fontSize=13;fontStyle=1;fontColor=#004890;" vertex="1" parent="1">
+          <mxGeometry x="20" y="14" width="240" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="hdr2" value="LATENT CONDITIONS  (inferred)" style="text;html=1;align=center;fontFamily=Arial;fontSize=13;fontStyle=1;fontColor=#1E7A47;" vertex="1" parent="1">
+          <mxGeometry x="430" y="14" width="250" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="hdr3" value="TARGET" style="text;html=1;align=center;fontFamily=Arial;fontSize=13;fontStyle=1;fontColor=#B23A3E;" vertex="1" parent="1">
+          <mxGeometry x="850" y="14" width="240" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ev1" value="CPU utilisation" style="rounded=1;arcSize=40;html=1;whiteSpace=wrap;fillColor=#E8F0F8;strokeColor=#A8C6DE;fontFamily=Arial;fontSize=13;fontColor=#1A2332;" vertex="1" parent="1">
+          <mxGeometry x="30" y="52" width="220" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="ev2" value="RAM utilisation" style="rounded=1;arcSize=40;html=1;whiteSpace=wrap;fillColor=#E8F0F8;strokeColor=#A8C6DE;fontFamily=Arial;fontSize=13;fontColor=#1A2332;" vertex="1" parent="1">
+          <mxGeometry x="30" y="112" width="220" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="ev3" value="Tuple queue depth" style="rounded=1;arcSize=40;html=1;whiteSpace=wrap;fillColor=#E8F0F8;strokeColor=#A8C6DE;fontFamily=Arial;fontSize=13;fontColor=#1A2332;" vertex="1" parent="1">
+          <mxGeometry x="30" y="172" width="220" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="ev4" value="Uplink latency" style="rounded=1;arcSize=40;html=1;whiteSpace=wrap;fillColor=#E8F0F8;strokeColor=#A8C6DE;fontFamily=Arial;fontSize=13;fontColor=#1A2332;" vertex="1" parent="1">
+          <mxGeometry x="30" y="232" width="220" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="ev5" value="Jitter / packet loss" style="rounded=1;arcSize=40;html=1;whiteSpace=wrap;fillColor=#E8F0F8;strokeColor=#A8C6DE;fontFamily=Arial;fontSize=13;fontColor=#1A2332;" vertex="1" parent="1">
+          <mxGeometry x="30" y="292" width="220" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="ev6" value="Handover rate" style="rounded=1;arcSize=40;html=1;whiteSpace=wrap;fillColor=#E8F0F8;strokeColor=#A8C6DE;fontFamily=Arial;fontSize=13;fontColor=#1A2332;" vertex="1" parent="1">
+          <mxGeometry x="30" y="352" width="220" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="ev7" value="Residual energy" style="rounded=1;arcSize=40;html=1;whiteSpace=wrap;fillColor=#E8F0F8;strokeColor=#A8C6DE;fontFamily=Arial;fontSize=13;fontColor=#1A2332;" vertex="1" parent="1">
+          <mxGeometry x="30" y="412" width="220" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="ev8" value="Sustained utilisation" style="rounded=1;arcSize=40;html=1;whiteSpace=wrap;fillColor=#E8F0F8;strokeColor=#A8C6DE;fontFamily=Arial;fontSize=13;fontColor=#1A2332;" vertex="1" parent="1">
+          <mxGeometry x="30" y="472" width="220" height="42" as="geometry" />
+        </mxCell>
+
+        <mxCell id="lt1" value="Computational&#10;stress" style="rounded=1;arcSize=30;html=1;whiteSpace=wrap;fillColor=#E9F4EE;strokeColor=#1E7A47;strokeWidth=1.5;fontFamily=Arial;fontSize=13;fontStyle=1;fontColor=#1A2332;" vertex="1" parent="1">
+          <mxGeometry x="470" y="96" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="lt2" value="Network&#10;degradation" style="rounded=1;arcSize=30;html=1;whiteSpace=wrap;fillColor=#E9F4EE;strokeColor=#1E7A47;strokeWidth=1.5;fontFamily=Arial;fontSize=13;fontStyle=1;fontColor=#1A2332;" vertex="1" parent="1">
+          <mxGeometry x="470" y="216" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="lt3" value="Energy&#10;stress" style="rounded=1;arcSize=30;html=1;whiteSpace=wrap;fillColor=#E9F4EE;strokeColor=#1E7A47;strokeWidth=1.5;fontFamily=Arial;fontSize=13;fontStyle=1;fontColor=#1A2332;" vertex="1" parent="1">
+          <mxGeometry x="470" y="336" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="lt4" value="Thermal&#10;stress" style="rounded=1;arcSize=30;html=1;whiteSpace=wrap;fillColor=#E9F4EE;strokeColor=#1E7A47;strokeWidth=1.5;fontFamily=Arial;fontSize=13;fontStyle=1;fontColor=#1A2332;" vertex="1" parent="1">
+          <mxGeometry x="470" y="456" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="prior" value="Node reliability prior&#10;(device class, MTBF)" style="rounded=1;arcSize=30;html=1;whiteSpace=wrap;fillColor=#FBF3E4;strokeColor=#A85D00;fontFamily=Arial;fontSize=13;fontColor=#1A2332;" vertex="1" parent="1">
+          <mxGeometry x="700" y="470" width="200" height="56" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tgt" value="&lt;b&gt;Node failure&lt;/b&gt;&#10;within horizon &#916;t&#10;&#10;P(F | e)" style="rounded=1;arcSize=20;html=1;whiteSpace=wrap;fillColor=#FDECEC;strokeColor=#B23A3E;strokeWidth=2.5;fontFamily=Arial;fontSize=15;fontColor=#1A2332;" vertex="1" parent="1">
+          <mxGeometry x="920" y="230" width="200" height="112" as="geometry" />
+        </mxCell>
+
+        <mxCell id="note1" value="Every variable discretised to { low, medium, high }" style="text;html=1;align=left;fontFamily=Arial;fontSize=12;fontColor=#5A6675;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="30" y="524" width="360" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="note2" value="P(X&#8321; … X&#8345;) = &#8719;&#7522; P(X&#7522; | parents(X&#7522;))&#10;Unobserved evidence is marginalised out, never imputed." style="rounded=0;html=1;whiteSpace=wrap;align=left;spacingLeft=10;fillColor=#F7FAFD;strokeColor=#A8C6DE;dashed=1;fontFamily=Arial;fontSize=12;fontColor=#004890;" vertex="1" parent="1">
+          <mxGeometry x="700" y="46" width="420" height="58" as="geometry" />
+        </mxCell>
+
+        <mxCell id="a1" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#5A6675;exitX=1;exitY=0.5;entryX=0;entryY=0.5;edgeStyle=none;" edge="1" parent="1" source="ev1" target="lt1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a2" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#5A6675;exitX=1;exitY=0.5;entryX=0;entryY=0.5;edgeStyle=none;" edge="1" parent="1" source="ev2" target="lt1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a3" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#5A6675;exitX=1;exitY=0.5;entryX=0;entryY=0.5;edgeStyle=none;" edge="1" parent="1" source="ev3" target="lt1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a4" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#5A6675;exitX=1;exitY=0.5;entryX=0;entryY=0.5;edgeStyle=none;" edge="1" parent="1" source="ev4" target="lt2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a5" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#5A6675;exitX=1;exitY=0.5;entryX=0;entryY=0.5;edgeStyle=none;" edge="1" parent="1" source="ev5" target="lt2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a6" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#5A6675;exitX=1;exitY=0.5;entryX=0;entryY=0.5;edgeStyle=none;" edge="1" parent="1" source="ev6" target="lt2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a7" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#5A6675;exitX=1;exitY=0.5;entryX=0;entryY=0.5;edgeStyle=none;" edge="1" parent="1" source="ev7" target="lt3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a8" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#5A6675;exitX=1;exitY=0.5;entryX=0;entryY=0.5;edgeStyle=none;" edge="1" parent="1" source="ev8" target="lt4"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="b1" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#B23A3E;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.25;edgeStyle=none;" edge="1" parent="1" source="lt1" target="tgt"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="b2" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#B23A3E;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.45;edgeStyle=none;" edge="1" parent="1" source="lt2" target="tgt"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="b3" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#B23A3E;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.65;edgeStyle=none;" edge="1" parent="1" source="lt3" target="tgt"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="b4" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#B23A3E;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.85;edgeStyle=none;" edge="1" parent="1" source="lt4" target="tgt"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="b5" style="html=1;rounded=0;endArrow=block;endFill=1;strokeColor=#A85D00;strokeWidth=1.5;exitX=0.5;exitY=0;entryX=0.5;entryY=1;edgeStyle=none;" edge="1" parent="1" source="prior" target="tgt"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

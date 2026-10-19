@@ -1,0 +1,219 @@
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                      │
+│                        BBN-Driven Proactive Fault Tolerance for Fog Computing                        │
+│                                                                                                      │
+│   A causal Bayesian Belief Network learns, from the telemetry of iFogSim fog devices, the            │
+│   probability that each node will fail within the next two epochs -- and a controller inside         │
+│   the simulator uses that probability to migrate and replicate services before the failure.          │
+│                                                                                                      │
+│   Department of Information Technology, SSN College of Engineering                                   │
+│                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+1  Build the iFogSim extension ─────────────────────────────────────────────────────────────────────────
+org.fog.ft: degradation fault model, instrumented devices, BBN engine, fault-tolerance controller. 
+Nothing upstream is modified.
+  ✓ compiled 174 classes into build/classes
+  ✓ openjdk version "21.0.2" 2024-01-16; Python 3.12.13
+
+2  The simulated system ────────────────────────────────────────────────────────────────────────────────
+Every node below is an iFogSim FogDevice subclass (InstrumentedFogDevice) running inside CloudSim's 
+event loop.
+Cloud  (1 datacentre, archival + fallback analysis)
+├── Fog tier  118 gateways from the Melbourne CBD edge-resource dataset; each hosts an ecg_analyser
+│   ├── telemetry agent: CPU, RAM, queue, uplink latency, jitter, handovers, residual energy, 
+│   │   temperature + 5 trends
+│   └── hidden health that wears under sustained load and heat; fails slow, then stops
+└── Edge tier  20-80 patients' devices moving along the Melbourne CBD mobility traces
+    ├── client module filters vitals; alarm actuator; battery drains
+    └── criticality: 25% critical (ICU), 45% standard, 30% best-effort
+Split         Scenarios (operating regimes)                     Seeds
+─────────────────────────────────────────────────────────────────────
+training      0, 2, 3, 4, 5, 6, 11                      101, 102, 103
+held out      1, 7, 8, 9, 10                                 201, 202
+closed loop   1, 7, 8, 9, 10                  201, 202, 203, 204, 205
+  Failures come from a stress-driven degradation model with fail-slow symptoms; 1 in 5 failures is 
+sudden and unpredictable by design.
+
+3  Telemetry from the iFogSim devices ──────────────────────────────────────────────────────────────────
+31 simulations (one JVM each): every node reports every epoch for 100 epochs; failures genuinely stop 
+service.
+ Split   Runs   Snapshots   Failed nodes   wear-out   sudden   battery   Positive rows 
+───────────────────────────────────────────────────────────────────────────────────────
+ train     21     314,323            754        486      125       143           1,508 
+ test      10     160,823            211        139       61        11             422 
+
+4  Dataset and leak audit ──────────────────────────────────────────────────────────────────────────────
+  ✓ train pool: 314,323 snapshots, 1508 positive (0.48% -- natural prevalence, nothing sampled away)
+  ✓ test  pool: 160,823 snapshots, 422 positive (0.26% -- natural prevalence, nothing sampled away)
+  ✓ leak audit: 2.0% of nodes failing in both a held-out and a training run fail at the same epoch 
+(92.1% before the fix: the old injector replayed the same random draws in every scenario)
+
+5  Training the BBN on the devices' telemetry ──────────────────────────────────────────────────────────
+Structure: the paper's Fig. 2 plus validated trend evidence and device-class conditioning; CPTs learned 
+by MAP-EM (latent stress is never observed).
+node_failure  P(fail within 2 epochs | evidence)   <- 4 latent conditions + reliability prior
+├── computational_stress  <- cpu_util, ram_util, queue_depth, cpu_trend, queue_trend (+ device class)
+├── network_degradation  <- uplink_latency, jitter_pktloss, handover_rate, latency_trend (+ device 
+│   class)
+├── energy_stress  <- residual_energy, energy_drain (+ device class)
+├── thermal_stress  <- temperature, temp_trend (+ device class)
+└── reliability_prior  (device class: cloud / fog / edge)
+  chosen by internal validation on training scenarios only: learned ranked-node latent tables, 
+supervised evidence bins (up to 8 per channel, per device class), Dirichlet concentration 1, 60 EM 
+iterations (CV PR-AUC 0.759; paper graph with tertiles 0.041)
+  EM ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 60/60 iterations log-likelihood -0.00961
+  ✓ 314,323 snapshots -> 43,374 distinct discretised patterns; trained in 10.6 s
+  ✓ retrained from scratch = data/bbn_trained.json, the model behind every reported result and read by 
+the Java controller (largest CPT difference 0.0e+00)
+Learned: P(fail within horizon | latent conditions), fog node   
+ computational      network     energy     thermal      P(fail) 
+────────────────────────────────────────────────────────────────
+ low                high        low        low            0.000 
+ low                low         low        low            0.001 
+ low                low         low        high           0.008 
+ low                low         high       high           0.043 
+ low                high        low        high           0.242 
+ high               high        high       high           0.998 
+
+6  How well does the BBN predict failures? ─────────────────────────────────────────────────────────────
+Nine models, the same data; choices made on training folds; scored once on 160k held-out snapshots of 
+unseen scenarios and seeds.
+ Model               PR-AUC   ROC-AUC     Brier      F1   Flagged in time   Missing data       Explains 
+────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Random forest        0.651     0.846   0.00157   0.687              0.68   imputes                     
+ BBN (proposed)       0.639     0.866   0.00128   0.658              0.63   marginalises          ✓     
+ BBN + RF fusion      0.639     0.866   0.00128   0.658              0.63   imputes                     
+ (ablation)                                                                                             
+ Gradient boosting    0.629     0.851   0.00134   0.645              0.63   imputes                     
+ Naive Bayes          0.522     0.862   0.01510   0.549              0.62   marginalises                
+ Logistic             0.469     0.840   0.00180   0.491              0.59   imputes                     
+ regression                                                                                             
+ Health-index         0.376     0.860         -   0.466              0.47   drops the                   
+ threshold (FTAPA)                                                          channel; silent             
+                                                                            if all are                  
+                                                                            missing                     
+ Neural network       0.239     0.837   0.00328   0.332              0.57   imputes                     
+ (MLP)                                                                                                  
+ CPU threshold        0.130     0.861         -   0.295              0.53   silent when CPU             
+                                                                            is missing                  
+ BBN (elicited, no    0.015     0.750   0.09975   0.082              0.10   marginalises          ✓     
+ failure data)                                                                                          
+PR-AUC as telemetry goes missing (more often on degrading nodes)                        
+ Model                               0%     10%     20%     30%     40%     50%     60% 
+────────────────────────────────────────────────────────────────────────────────────────
+ BBN (proposed)                   0.639   0.534   0.440   0.282   0.123   0.019   0.016 
+ Random forest                    0.651   0.563   0.478   0.294   0.128   0.020   0.016 
+ Gradient boosting                0.629   0.414   0.241   0.078   0.023   0.008   0.005 
+ Naive Bayes                      0.522   0.413   0.345   0.225   0.099   0.021   0.027 
+ Logistic regression              0.469   0.206   0.170   0.128   0.067   0.011   0.013 
+ Neural network (MLP)             0.239   0.098   0.089   0.029   0.009   0.003   0.003 
+ Health-index threshold (FTAPA)   0.376   0.194   0.144   0.110   0.068   0.011   0.012 
+
+7  LIVE: the trained BBN running proactive fault tolerance inside iFogSim ──────────────────────────────
+Every epoch the controller reads each fog node's telemetry, computes P(fail) with the BBN, migrates 
+sessions when P(fail)·C_fail > C_mig, sets redundancy by P(fail)·κ, and learns online.
+╭──────────── iFogSim · scenario 7 (dense-edge, unseen) · seed 201 · policy: proposed BBN ─────────────╮
+│   t = 9,901 / 10,000   fog nodes alive 113    at risk (P ≥ 0.1) 0    warm standby / checkpoint 0 / 5 │
+│ proactive migrations 21  fog failures 5   users evacuated / hit 0 / 5    downtime so far 7.13 s      │
+│ ──────────────────────────────────────────────────────────────────────────────────────────────────── │
+│   t= 9301.0  MIGRATE edge-59  (best-effort)   fog-61 → fog-127  P(fail)=0.410 > P*=0.272   cause:    │
+│ energy stress                                                                                        │
+│   t= 9301.0  MIGRATE edge-68  (best-effort)   fog-61 → fog-129  P(fail)=0.410 > P*=0.272   cause:    │
+│ energy stress                                                                                        │
+│   t= 9301.0  MIGRATE edge-73  (best-effort)   fog-61 → fog-129  P(fail)=0.410 > P*=0.272   cause:    │
+│ energy stress                                                                                        │
+│   t= 9313.9  FAIL    fog-38     (sudden  ) 4 user(s) hit                                             │
+│   t= 9343.9  RECOVER edge-8   via none         → fog-22   outage 330 ms                              │
+│   t= 9343.9  RECOVER edge-28  via none         → fog-92   outage 330 ms                              │
+│   t= 9343.9  RECOVER edge-49  via none         → fog-92   outage 330 ms                              │
+│   t= 9343.9  RECOVER edge-74  via none         → fog-64   outage 330 ms                              │
+│   t= 9461.2  USER    edge-47 device died (sudden) -- outside fog control                             │
+│   t= 9701.0  MIGRATE edge-50  (standard   )   fog-61 → fog-127  P(fail)=0.372 > P*=0.111   cause:    │
+│ energy stress                                                                                        │
+│   t= 9701.0  MIGRATE edge-71  (best-effort)   fog-61 → fog-22   P(fail)=0.372 > P*=0.273   cause:    │
+│ energy stress                                                                                        │
+│   t= 9701.0  MIGRATE edge-75  (best-effort)   fog-61 → fog-29   P(fail)=0.372 > P*=0.049   cause:    │
+│ energy stress                                                                                        │
+│   t= 9901.0  MIGRATE edge-33  (standard   )  fog-127 → fog-50   P(fail)=0.033 > P*=0.022   cause:    │
+│ energy stress                                                                                        │
+│   t= 9901.0  MIGRATE edge-58  (standard   )  fog-127 → fog-97   P(fail)=0.033 > P*=0.022   cause:    │
+│ energy stress                                                                                        │
+│ ──────────────────────────────────────────────────────────────────────────────────────────────────── │
+│ online CPT updates: 18922 obs, 20 refreshes, max |dP| 0.0003                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
+  ✓ run finished: availability 99.103%, 21 proactive migrations, 0 users evacuated before a failure, 5 
+hit (5 by sudden failures, which have no precursor); controller 2.24 ms per epoch
+
+8  Every fault-tolerance policy on the same held-out run ───────────────────────────────────────────────
+Identical failure luck for all policies (common random numbers); only their decisions differ.
+                                  Failu…                                                                
+                                       +      All                                                Criti… 
+                                  migra…   downt…    Users                       Warm     Loop   deadl… 
+ Policy                           / user   / user      hit   Evacu…   Migra…   stand…      p95   misses 
+────────────────────────────────────────────────────────────────────────────────────────────────────────
+ No fault tolerance               459 ms   547 ms       89        0        0     0.0%    33 ms     0.5% 
+ Cloud-only placement               2 ms     2 ms        4        0        0     0.0%   233 ms   100.0% 
+ Reactive checkpoint + backup      80 ms   173 ms       88        0        0     0.0%    33 ms     0.3% 
+ Threshold migration (FTAPA)       26 ms   121 ms       58       37       82   100.0%    38 ms     0.8% 
+ Expected-loss + ML predictor      17 ms    86 ms        4        3       21     0.1%    32 ms     0.0% 
+ Proposed BBN framework            21 ms    89 ms        5        0       21     0.1%    32 ms     0.0% 
+ Oracle predictor (upper bound)    17 ms    85 ms        4        4       12     0.1%    32 ms     0.0% 
+  'All downtime' adds mobility handovers (users walking between gateways), which no fault-tolerance 
+policy causes or prevents.
+Over all held-out runs (25 per policy: 5 unseen scenarios x 5 unseen seeds)                             
+                                   Failures                                                             
+                                          +                                                    Critical 
+                                  migratio…      BBN vs    Wilcoxon                    Warm    deadline 
+ Policy                              / user        this           p   Users hit     standby      misses 
+────────────────────────────────────────────────────────────────────────────────────────────────────────
+ No fault tolerance                  517 ms        -97%     <0.0001        78.5        0.0%       3.82% 
+ Cloud-only placement                  2 ms       +863%     <0.0001         2.0        0.0%     100.00% 
+ Reactive checkpoint + backup        111 ms        -85%     <0.0001        89.2        0.0%       4.39% 
+ Threshold migration (FTAPA)          38 ms        -55%      0.0016        54.1      100.0%       5.46% 
+ Expected-loss + ML predictor         19 ms        +18%      0.1219         3.8        0.3%       0.22% 
+ Proposed BBN framework               20 ms                                 4.5        0.2%       0.13% 
+ Oracle predictor (upper bound)       15 ms        +58%      0.0009         3.4        0.4%       0.12% 
+  'BBN vs this': change of the BBN framework's downtime from failures + migrations relative to that 
+policy (negative = BBN better), paired over identical runs.
+
+9  Verdict: why the BBN ────────────────────────────────────────────────────────────────────────────────
+╭───────────────────────────────── evidence from this project's runs ──────────────────────────────────╮
+│                                                                                                      │
+│   ● As accurate as the best black box.  PR-AUC 0.639 vs Random forest 0.651 (95% intervals overlap); │
+│ ROC-AUC 0.866 (best of all models).                                                                  │
+│   ● Calibrated probabilities.  Brier 0.00128 (best), ECE 0.0005 (best) -- the controller multiplies  │
+│ P(fail) by a cost, so this matters.                                                                  │
+│   ● Close to what is achievable.  122 of the 422 held-out failures are sudden (no precursor). A      │
+│ predictor clairvoyant about all the others would score ROC-AUC 0.872 and PR-AUC 0.712; the BBN       │
+│ reaches 99% and 90%.                                                                                 │
+│   ● Missing telemetry.  With 30-60% of channels missing, more often on degrading nodes, the BBN      │
+│ keeps the best probabilities (log-loss 0.0171; best alternative 0.0189, Gradient boosting); for      │
+│ ranking, Naive Bayes holds up best (ROC-AUC 0.821, BBN 0.700). Missing channels are summed out,      │
+│ never imputed.                                                                                       │
+│   ● Works before any failure is seen.  With only the expert-elicited tables, ROC-AUC 0.750 and       │
+│ PR-AUC 0.015 (5.5x the chance level 0.0026); a classifier cannot be trained at all without failure   │
+│ labels.                                                                                              │
+│   ● Explains every alarm.  Each P(fail) comes with the latent condition driving it (computational,   │
+│ network, energy or thermal stress) -- shown live in stage 7.                                         │
+│   ● vs no fault tolerance:  downtime from failures + migrations -97% (p < 0.001), critical patients' │
+│ downtime -82% (p < 0.001).                                                                           │
+│   ● vs reactive checkpointing (Rajab 2021):  downtime from failures + migrations -85% (p < 0.001),   │
+│ critical patients' downtime -58% (p < 0.001).                                                        │
+│   ● vs FTAPA threshold migration (Gupta 2025):  downtime from failures + migrations -55% (p =        │
+│ 0.002), critical patients' downtime -39% (p < 0.001); warm standby for 0.2% of sessions against      │
+│ 100%.                                                                                                │
+│   ● vs the same controller driven by ML:  complete telemetry +18% (p = 0.122), not significant; with │
+│ 30% of telemetry missing, more often on degrading nodes, -29% (p = 0.006).                           │
+│   ● Against a perfect predictor:  of the failure downtime a perfect predictor removes (no fault      │
+│ tolerance 517 ms per user, oracle 15 ms), the BBN framework removes 99% (20 ms).                     │
+│   ● Cloud-only is not an option for critical patients:  least downtime, but loop p95 310 ms misses   │
+│ the 150 ms deadline on every critical alarm.                                                         │
+│                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+  Reports: model/comparison/results/model_comparison.md, model/results/ft/policy_comparison.md, 
+model/results/verification_report.md
+  Block diagram: details/Project_Block_Diagram.png
+
+demo finished in 34 s

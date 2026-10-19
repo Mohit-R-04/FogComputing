@@ -1,89 +1,78 @@
 # Model comparison
 
-This folder compares the proposed BBN with representative proactive/threshold
-baselines on the same iFogSim-derived cloud/fog/edge telemetry.
-
-## Folder layout
-
-```text
-model/comparison/
-├── README.md
-├── run_comparison.py          comparison runner
-├── models/
-│   ├── bbn_model.py           adapter for data/cpts_trained.json
-│   ├── threshold_model.py     CPU-only threshold baseline
-│   └── classical_models.py    logistic, random forest, histogram boosting
-└── results/
-    ├── model_comparison.csv   machine-readable metrics
-    ├── model_comparison.md    human-readable report
-    ├── comparison_metrics.png metric bar chart
-    └── comparison_roc_pr.png  ROC and precision-recall curves
-```
-
-## Models compared
-
-1. **BBN fusion (proposed)** — a Bayesian log-pool of the causal BBN posterior and
-a continuous telemetry risk head. The causal BBN remains the explanation path;
-the risk head prevents three-state discretisation from discarding useful magnitude.
-The frozen fusion weight is 30% causal BBN and 70% continuous risk, selected on
-pooled out-of-fold training scenarios only. The frozen alarm threshold is 0.63.
-2. **Standalone BBN** — fixed causal graph, weighted EM-trained CPTs, partial-evidence
-marginalisation, and explainable latent-stress chain without the fusion head.
-3. **CPU threshold** — reactive single-metric baseline. It raises an alarm when
-CPU exceeds a threshold. The threshold is selected on internal training scenarios,
-not on the final cases.
-4. **Logistic regression** — discriminative linear baseline using the same raw
-telemetry channels, median imputation, missing indicators, standardisation and
-class weighting.
-5. **Random forest** — nonlinear tree ensemble using the same telemetry features,
-median imputation and missing indicators.
-6. **Histogram gradient boosting** — nonlinear boosting baseline using the same
-features and sample weights.
-
-The classical models are not given `scenario_id`, `node_id`, `node_name`, epoch,
-failure time or any other identifier. The device class is represented only as the
-three-tier reliability prior (`cloud`, `fog`, `edge`) so the comparison uses the
-same architectural prior as the BBN without making the class label itself a target
-shortcut.
-
-## Interpretation of the current result
-
-The proposed BBN fusion is the best model on the primary ranking metrics in the
-current held-out evaluation. Random forest still has the highest F1 at its selected
-alarm threshold, so the claim is specifically about ranking quality, not every
-possible operating-point metric.
-
-## Fair evaluation protocol
-
-- Training data: `data/telemetry_train_pool.csv`, scenarios 0, 2, 3, 4, 5, 6 and 11.
-- Final cases: `data/telemetry_cases.csv`, held-out scenarios 1, 7, 8, 9 and 10.
-- Quantile encoding is not used by the classical models; they consume the raw
-numeric telemetry.
-- Missing numeric values are median-imputed using training rows only, with explicit
-missing indicators.
-- Class weights use the positive target prevalence of the balanced evaluation design.
-- F1 thresholds are selected using internal scenario-level validation inside the
-training scenarios. The final evaluation cases are not used to choose thresholds.
-- ROC-AUC, PR-AUC and Brier score are threshold-independent. F1 is reported at the
-selected validation threshold.
-
-The final cases are deliberately retained until scoring. This prevents the model
-comparison from becoming a test-set tuning exercise.
-
-## Reproduce
-
-From the `solution/` root:
+Why a Bayesian Belief Network? This folder answers that with an experiment: the proposed
+BBN against eight alternatives on the same iFogSim telemetry, scored on runs whose
+operating regimes **and** random seeds were never seen in training.
 
 ```bash
 cd model
-.venv/bin/python comparison/run_comparison.py
+.venv/bin/python comparison/run_comparison.py          # about 9 minutes
+.venv/bin/python comparison/run_comparison.py --fast   # skip the learning curve
+.venv/bin/python comparison/report_comparison.py       # rebuild report and figures only
 ```
 
-Outputs are written to `model/comparison/results/`.
+The report is `results/model_comparison.md`.
 
-## Interpretation
+## Layout
 
-Use ROC-AUC for ranking, PR-AUC for the rare-event retrieval view, Brier score for
-probability quality, ECE for calibration, and F1 for a particular alarm operating
-point. No single metric is sufficient for proactive fault tolerance: the BBN also
-provides latent-cause explanations and handles missing telemetry by marginalisation.
+```text
+model/comparison/
+├── run_comparison.py        protocol: out-of-fold choices, final fits, held-out scoring,
+│                            robustness, learning curve, exports for the Java controller
+├── report_comparison.py     figures, scorecard and the Markdown report (every claim in the
+│                            text is computed from the numbers)
+├── models/
+│   ├── bbn_models.py        proposed BBN, elicited BBN (no failure data), Naive Bayes
+│   ├── classical_models.py  logistic regression, random forest, gradient boosting, MLP
+│   ├── threshold_model.py   CPU threshold, FTAPA health index (Gupta and Singh 2025)
+│   └── bbn_fusion.py        BBN + random forest log-pool (ablation only)
+└── results/                 report, CSVs, figures, test_predictions.npz
+```
+
+## Models
+
+| Model | What it is |
+|---|---|
+| **BBN (proposed)** | the trained network of `data/bbn_trained.json`: paper Fig. 2 graph with trend evidence and device-class conditioning, learned ranked-node latent tables, up to 8 supervised bins per channel and device class, MAP-EM |
+| BBN (elicited, no failure data) | the paper's Fig. 2 network with expert-elicited tables and tertile bins; never sees a failure label |
+| Naive Bayes | the simplest Bayesian network, on the same per-class bins as the BBN |
+| Logistic regression, random forest, gradient boosting, neural network (MLP) | scikit-learn, on the explicit feature matrix of `features.py` |
+| Health-index threshold (FTAPA) | fixed-weight mix of CPU, queue, energy and temperature against one tuned threshold |
+| CPU threshold | single metric |
+| BBN + RF fusion | Bayesian log-pool of the BBN and the random forest; reported as an ablation |
+
+The classical models see the 13 telemetry channels, a missing indicator per channel
+(missing values imputed with the training median) and the device class. None of them
+sees identifiers, epochs, failure times or the hidden health.
+
+## Protocol
+
+1. **Choices made on training folds only.** Four folds by scenario over the 21 training
+   runs. For each model the variant with the best out-of-fold log-loss is kept
+   (unweighted vs class-balanced); thresholds are F1-optimal out-of-fold; the fusion
+   weight is chosen out-of-fold.
+2. **Final fits** on all training runs.
+3. **One scoring** on the held-out pool: 159,813 fog and edge snapshots, 422 positive
+   (0.26%, natural prevalence). 95% intervals come from a bootstrap over nodes.
+4. **Robustness:** channels withheld at random (MCAR) and more often on degrading
+   nodes (MNAR, probability scaled by 1 + damage), 0-60%. The BBN sums a missing
+   channel out; the classical models impute it.
+5. **Data efficiency:** each model retrained on 1, 2, 4, 7, 14 and 21 training runs.
+6. **Exports:** the best classical model out-of-fold (`data/models/ml_best.json`) and
+   the FTAPA weights (`data/models/ftapa.json`) for the closed-loop experiment, plus
+   `parity_sample.csv` for the Java/Python parity test.
+
+## Result in one paragraph
+
+On held-out runs the BBN has the best ROC-AUC (0.866), the best Brier score (0.00128)
+and the best calibration (ECE 0.0005), and is statistically tied with the random forest
+on PR-AUC (0.639 vs 0.651, overlapping intervals); the random forest has a higher F1 and
+flags slightly more failing nodes at its threshold. 29% of held-out failures are sudden
+by design, which caps any model at ROC-AUC 0.872 and PR-AUC 0.712 on this pool; the BBN
+reaches 99% and 90% of that, and on fog nodes it ranks failures as well as an oracle that
+knows each node's hidden health. With telemetry missing it keeps the best probabilities
+(log-loss) of all models; Naive Bayes keeps the best ranking under heavy
+degradation-correlated loss. Only a Bayesian network gives a usable probability before
+any failure has been observed (elicited tables: ROC-AUC 0.750), and only the BBN names the
+condition behind each alarm. The full scorecard, including the criteria where the BBN is
+behind, is at the end of the report.

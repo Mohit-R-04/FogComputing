@@ -4,8 +4,8 @@ Cross-checks the hand-written inference engine against pgmpy.
 
 `test_inference.py` already checks variable elimination against a direct
 transcription of Eq. (1), but both of those are this project's own code, and a
-shared misreading of the semantics would pass both. This script rebuilds the same
-fourteen-variable network in pgmpy -- an independent, widely used implementation --
+shared misreading of the semantics would pass both. This script rebuilds the
+networks in pgmpy -- an independent, widely used implementation --
 and asserts that the posteriors agree to nine decimal places over a range of
 evidence sets, including ones with channels deliberately withheld.
 
@@ -23,7 +23,7 @@ import numpy as np
 
 import bbn_model
 import inference
-from bbn_model import ALL_VARS, EVIDENCE_VARS, PARENTS, PRIOR_VAR, TARGET_VAR, states_of
+from bbn_model import EVIDENCE_VARS, PRIOR_VAR, TARGET_VAR, states_of
 
 TOLERANCE = 1e-9
 
@@ -43,30 +43,31 @@ def build_pgmpy_model(net):
         from pgmpy.factors.discrete import TabularCPD
         from pgmpy.models import BayesianNetwork as DiscreteBayesianNetwork
 
-    edges = [(p, v) for v in ALL_VARS for p in PARENTS[v]]
+    st = net.structure
+    edges = [(p, v) for v in st.variables for p in st.parents[v]]
     model = DiscreteBayesianNetwork(edges)
-    model.add_nodes_from(ALL_VARS)
+    model.add_nodes_from(st.variables)
 
-    for var in ALL_VARS:
-        parents = PARENTS[var]
-        card = len(states_of(var))
+    for var in st.variables:
+        parents = st.parents[var]
+        card = len(st.states(var))
 
         if parents:
-            configs = list(itertools.product(*[states_of(p) for p in parents]))
+            configs = list(itertools.product(*[st.states(p) for p in parents]))
             table = np.array([[net.cpt(var)[c][s] for c in configs] for s in range(card)])
             cpd = TabularCPD(
                 variable=var,
                 variable_card=card,
                 values=table,
                 evidence=list(parents),
-                evidence_card=[len(states_of(p)) for p in parents],
-                state_names={var: list(states_of(var)),
-                             **{p: list(states_of(p)) for p in parents}},
+                evidence_card=[len(st.states(p)) for p in parents],
+                state_names={var: list(st.states(var)),
+                             **{p: list(st.states(p)) for p in parents}},
             )
         else:
             column = np.array([[p] for p in net.cpt(var)[()]])
             cpd = TabularCPD(variable=var, variable_card=card, values=column,
-                             state_names={var: list(states_of(var))})
+                             state_names={var: list(st.states(var))})
         model.add_cpds(cpd)
 
     assert model.check_model()
@@ -102,60 +103,81 @@ def evidence_cases():
     return cases
 
 
+def real_cases(net, cuts, n=40):
+    """Evidence from real held-out snapshots, with their natural missing channels."""
+    import pandas as pd
+
+    import design
+    from discretise import row_to_evidence
+
+    path = design.DATA / "telemetry_test_pool.csv"
+    if not path.exists():
+        return []
+    df = pd.read_csv(path, nrows=60000)
+    df = pd.concat([df[df.ground_truth_fail == 1].head(n // 2), df[df.ground_truth_fail == 0].sample(n // 2, random_state=1)])
+    return [(f"held-out {r.node_name}@{r.epoch:.0f}", row_to_evidence(r.to_dict(), cuts, structure=net.structure))
+            for _, r in df.iterrows()]
+
+
+def compare(label_net, net, cases, VariableElimination, latent_case=None) -> tuple[float, int]:
+    model = build_pgmpy_model(net)
+    engine = VariableElimination(model)
+    worst, failures = 0.0, 0
+    print(f"\n[{label_net}]  {len(net.structure.variables)} variables")
+    print(f"{'evidence':34s} {'ours P(fail)':>14s} {'pgmpy P(fail)':>14s} {'|diff|':>10s}")
+    for label, evidence in cases:
+        ours = float(inference.variable_elimination(net, evidence)[states_of(TARGET_VAR).index("fail")])
+        result = engine.query(variables=[TARGET_VAR], evidence=evidence or None, show_progress=False)
+        theirs = float(result.get_value(**{TARGET_VAR: "fail"}))
+        diff = abs(ours - theirs)
+        worst = max(worst, diff)
+        if diff > TOLERANCE:
+            failures += 1
+        print(f"{label[:34]:34s} {ours:14.9f} {theirs:14.9f} {diff:10.2e}{'   <-- MISMATCH' if diff > TOLERANCE else ''}")
+    _, full = latent_case or cases[1]
+    for latent in net.structure.latent:
+        ours = inference.variable_elimination(net, full, latent)
+        theirs_factor = engine.query(variables=[latent], evidence=full, show_progress=False)
+        theirs = np.array([theirs_factor.get_value(**{latent: s}) for s in net.structure.states(latent)])
+        diff = float(np.abs(ours - theirs).max())
+        worst = max(worst, diff)
+        failures += diff > TOLERANCE
+        print(f"  latent {latent:22s} max |diff| = {diff:.2e}")
+    return worst, failures
+
+
 def main() -> int:
     try:
         import pgmpy  # noqa: F401
         from pgmpy.inference import VariableElimination
     except ImportError:
         print("pgmpy is not installed; skipping the cross-check.")
-        print("  install it with:  solution/python/.venv/bin/pip install pgmpy")
+        print("  install it with:  model/.venv/bin/pip install pgmpy")
         return 0
 
     print(f"cross-checking against pgmpy {getattr(pgmpy, '__version__', '?')}")
+    worst, failures = compare("elicited network, paper Fig. 2", bbn_model.build_network(), evidence_cases(),
+                              VariableElimination)
 
-    net = bbn_model.build_network()
-    model = build_pgmpy_model(net)
-    engine = VariableElimination(model)
+    import design
+    trained_path = design.DATA / "bbn_trained.json"
+    if trained_path.exists():
+        from bbn_io import load_model
 
-    worst = 0.0
-    failures = 0
-
-    print(f"\n{'evidence':30s} {'ours P(fail)':>14s} {'pgmpy P(fail)':>14s} {'|diff|':>10s}")
-    for label, evidence in evidence_cases():
-        ours = float(inference.variable_elimination(net, evidence)[
-            states_of(TARGET_VAR).index("fail")])
-
-        result = engine.query(variables=[TARGET_VAR], evidence=evidence or None,
-                              show_progress=False)
-        theirs = float(result.get_value(**{TARGET_VAR: "fail"}))
-
-        diff = abs(ours - theirs)
-        worst = max(worst, diff)
-        flag = "" if diff <= TOLERANCE else "   <-- MISMATCH"
-        if diff > TOLERANCE:
-            failures += 1
-        print(f"{label:30s} {ours:14.9f} {theirs:14.9f} {diff:10.2e}{flag}")
-
-    # Also compare the latent marginals, not just the target.
-    print("\nlatent marginals, full telemetry:")
-    _, full = evidence_cases()[1]
-    for latent in ("computational_stress", "network_degradation",
-                   "energy_stress", "thermal_stress"):
-        ours = inference.variable_elimination(net, full, latent)
-        theirs_factor = engine.query(variables=[latent], evidence=full, show_progress=False)
-        theirs = np.array([theirs_factor.get_value(**{latent: s})
-                           for s in states_of(latent)])
-        diff = float(np.abs(ours - theirs).max())
-        worst = max(worst, diff)
-        if diff > TOLERANCE:
-            failures += 1
-        print(f"  {latent:22s} max |diff| = {diff:.2e}")
+        net, cuts, doc = load_model(trained_path)
+        # The hand-written cases use the paper's three states; the trained network's
+        # evidence has up to eight, so it is checked on real held-out snapshots.
+        real = real_cases(net, cuts)
+        cases = [("no evidence at all", {}), ("device class only", {PRIOR_VAR: "medium"})] + real
+        richest = max(real, key=lambda c: len(c[1])) if real else None
+        w, f = compare(f"trained network, {doc['structure']}", net, cases, VariableElimination, richest)
+        worst, failures = max(worst, w), failures + f
 
     print(f"\nlargest disagreement anywhere: {worst:.3e}  (tolerance {TOLERANCE:.0e})")
     if failures:
         print(f"FAILED: {failures} comparison(s) outside tolerance")
         return 1
-    print("PASS: the hand-written engine agrees with pgmpy on every case.")
+    print("PASS: the project's inference engine agrees with pgmpy on every case.")
     return 0
 
 

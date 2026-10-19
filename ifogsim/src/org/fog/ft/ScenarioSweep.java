@@ -3,9 +3,19 @@ package org.fog.ft;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Twelve deterministic three-tier operating regimes for the iFogSim sweep. */
+/**
+ * Twelve deterministic three-tier operating regimes, and the command line that turns one
+ * of them into labelled telemetry (policy NO_FT: the system as deployed without fault
+ * tolerance, which is what the predictor learns from).
+ *
+ * <pre>
+ *   ScenarioSweep --list
+ *   ScenarioSweep &lt;scenario&gt; &lt;seed&gt; &lt;out.csv&gt; [simTime]
+ * </pre>
+ */
 public class ScenarioSweep {
-    private static final int SIM_TIME = 5000;
+    /** One hundred decision epochs of 100 time units. */
+    public static final int SIM_TIME = 10000;
 
     private static final double[] CLOUD_POWER = {16 * 103.0, 16 * 83.25};
     private static final double[] FOG_POWER_FLAT = {107.339, 83.4333};
@@ -59,10 +69,15 @@ public class ScenarioSweep {
             return;
         }
         if (args.length < 3) {
-            System.err.println("usage: ScenarioSweep <scenarioIndex> <seed> <outputCsv>");
+            System.err.println("usage: ScenarioSweep <scenarioIndex> <seed> <outputCsv> [simTime]");
             System.exit(2);
         }
-        MelbCBDFaultToleranceSim.runScenario(
-                get(Integer.parseInt(args[0])), Long.parseLong(args[1]), args[2]);
+        RunConfig cfg = new RunConfig();
+        cfg.spec = get(Integer.parseInt(args[0]));
+        cfg.seed = Long.parseLong(args[1]);
+        cfg.telemetryCsv = args[2];
+        cfg.policy = FtPolicy.NO_FT;
+        if (args.length > 3) cfg.simTime = Double.parseDouble(args[3]);
+        MelbCBDFaultToleranceSim.run(cfg);
     }
 }

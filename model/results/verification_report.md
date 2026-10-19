@@ -1,119 +1,81 @@
-# BBN failure prediction — verification report
+# BBN failure prediction -- verification report
 
-- Cases: `telemetry_cases.csv` — 200 cases, 80 positives (40% prevalence)
-- Telemetry pool: 38484 snapshots over 199 nodes
-- Training set: `telemetry_train_pool.csv` — drawn from **different scenarios** than the cases scored here, so the model is evaluated on operating regimes it never saw during training
-- Look-ahead horizon Δt: 200 time units (2 epochs)
-
-Two models are reported throughout. **Elicited** uses the conditional probability tables generated from expert weights alone, with no failure data at all — the honest starting position the paper describes, since no public failure trace exists for this topology. **Trained** learns those tables from the complete iFogSim training pool using class-weighted, Dirichlet-smoothed EM; EM is necessary because the four latent stress conditions are never observed. The network structure is the paper's Fig. 2 in both cases; only the parameters differ.
+- Held-out pool: **159,813 fog and edge snapshots, 422 positive** (0.26%) from runs whose scenarios and seeds were never used in training.
+- Network: `fig2+trends+class-evidence+class-latent+ranked` with `supervised-per-class` cut points; trained by MAP-EM on 314,323 snapshots (1508 positive, 43,374 distinct patterns), Dirichlet concentration 1.0, 60 iterations.
+- Look-ahead horizon: 200 time units (two decision epochs).
 
 ## 1. Discrimination
 
-| model | ROC-AUC | 95% CI | PR-AUC | 95% CI |
-|---|---|---|---|---|
-| elicited | 0.622 | [0.538, 0.699] | 0.539 | [0.436, 0.651] |
-| trained | 0.767 | [0.699, 0.825] | 0.679 | [0.583, 0.776] |
+| Network | ROC-AUC | 95% CI | PR-AUC | 95% CI |
+|---|---:|---|---:|---|
+| trained (proposed) | 0.8665 | [0.8290, 0.8948] | 0.6393 | [0.5845, 0.6950] |
+| elicited only, paper Fig. 2, no failure data | 0.7496 | [0.7168, 0.7767] | 0.0146 | [0.0102, 0.0211] |
 
-Both intervals are wide, and unavoidably so: 200 cases with 80 positives cannot resolve differences smaller than roughly 0.1 in AUC. Differences inside that band should not be read as real.
+Chance level for PR-AUC is the prevalence, 0.0026. Intervals resample whole nodes.
 
-## 2. Classification quality
+## 2. Alarms across thresholds
 
-**elicited**, threshold sweep:
+| Threshold | TP | FP | FN | Precision | Recall | F1 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0.02 | 297 | 761 | 125 | 0.281 | 0.704 | 0.401 |
+| 0.05 | 292 | 397 | 130 | 0.424 | 0.692 | 0.526 |
+| 0.10 | 286 | 247 | 136 | 0.537 | 0.678 | 0.599 |
+| 0.20 | 276 | 139 | 146 | 0.665 | 0.654 | 0.659 |
+| 0.30 | 268 | 87 | 154 | 0.755 | 0.635 | 0.690 |
+| 0.50 | 231 | 49 | 191 | 0.825 | 0.547 | 0.658 |
 
-| threshold | TP | FP | TN | FN | precision | recall | F1 | accuracy |
-|---|---|---|---|---|---|---|---|---|
-| 0.10 | 80 | 120 | 0 | 0 | 0.400 | 1.000 | 0.571 | 0.400 |
-| 0.20 | 77 | 109 | 11 | 3 | 0.414 | 0.963 | 0.579 | 0.440 |
-| 0.30 | 63 | 77 | 43 | 17 | 0.450 | 0.787 | 0.573 | 0.530 |
-| 0.40 | 35 | 43 | 77 | 45 | 0.449 | 0.438 | 0.443 | 0.560 |
-| 0.50 | 33 | 27 | 93 | 47 | 0.550 | 0.412 | 0.471 | 0.630 |
-| 0.60 | 23 | 15 | 105 | 57 | 0.605 | 0.287 | 0.390 | 0.640 |
-| 0.70 | 0 | 0 | 120 | 80 | 0.000 | 0.000 | 0.000 | 0.600 |
-
-Best F1 0.604 at threshold 0.23.
-
-**trained**, threshold sweep:
-
-| threshold | TP | FP | TN | FN | precision | recall | F1 | accuracy |
-|---|---|---|---|---|---|---|---|---|
-| 0.10 | 80 | 80 | 40 | 0 | 0.500 | 1.000 | 0.667 | 0.600 |
-| 0.20 | 80 | 78 | 42 | 0 | 0.506 | 1.000 | 0.672 | 0.610 |
-| 0.30 | 45 | 34 | 86 | 35 | 0.570 | 0.562 | 0.566 | 0.655 |
-| 0.40 | 38 | 18 | 102 | 42 | 0.679 | 0.475 | 0.559 | 0.700 |
-| 0.50 | 36 | 17 | 103 | 44 | 0.679 | 0.450 | 0.541 | 0.695 |
-| 0.60 | 35 | 11 | 109 | 45 | 0.761 | 0.438 | 0.556 | 0.720 |
-| 0.70 | 31 | 9 | 111 | 49 | 0.775 | 0.388 | 0.517 | 0.710 |
-
-Best F1 0.684 at threshold 0.25.
+At the operating threshold chosen on training folds (0.4994): precision 0.825, recall 0.547, F1 0.658. The fault-tolerance controller does not use a fixed threshold at all: it migrates when P(fail) x C_fail > C_mig, so each session gets its own.
 
 ## 3. Calibration
 
-| model | Brier | ECE |
-|---|---|---|
-| elicited | 0.2340 | 0.1023 |
-| trained | 0.1872 | 0.0995 |
+Brier score 0.00128, log-loss 0.00815, ECE 0.00048 (15 equal-mass bins). Mean predicted probability 0.0030 against an observed failure rate of 0.0026.
 
-Calibration is what separates a posterior usable in an expected-loss migration rule from a score that merely ranks. The rule `migrate iff P(fail)·C_fail > C_migrate` is only meaningful if P(fail) is a probability rather than an ordering.
+![Calibration](calibration.png)
 
-## 4. Lead time
+## 4. Early warning
 
-| model | failing nodes | detected | detection rate | mean lead | median lead | mean lead (epochs) |
-|---|---|---|---|---|---|---|
-| elicited | 71 | 69 | 0.97 | 147.8 | 144.6 | 1.48 |
-| trained | 71 | 71 | 1.00 | 146.5 | 144.4 | 1.47 |
+Of 211 failing nodes, **133 (63%)** were flagged inside the two epochs before they failed, with a mean lead of 127 time units; 0.3 alarms per 1,000 healthy snapshots. A live migration needs 5-30 time units, so a flag raised within the horizon leaves time to act. Nodes are grouped by scenario, seed and node.
 
-Lead time is measured only inside the Δt window before each failure, so an alarm raised earlier than that earns no credit. A migration needs less than one epoch to complete, so any mean lead above 1.0 epochs leaves room to act.
+## 5. Does the named cause match how the node failed?
 
-## 5. Robustness to partial evidence
+Rows: how positive (failing-within-horizon) snapshots actually failed. Columns: the latent condition the BBN named as the principal cause (largest lift of P(high) over its prior; *none* when no condition rose). Share of the row, with the count in brackets.
 
-| model | channels withheld | ROC-AUC | s.d. | F1 | mean P(fail) | predictions made |
-|---|---|---|---|---|---|---|
-| elicited | 0 | 0.622 | 0.000 | 0.604 | 0.387 | 200 |
-| elicited | 1 | 0.623 | 0.007 | 0.598 | 0.379 | 200 |
-| elicited | 2 | 0.626 | 0.012 | 0.598 | 0.364 | 200 |
-| elicited | 3 | 0.638 | 0.031 | 0.594 | 0.357 | 200 |
-| trained | 0 | 0.767 | 0.000 | 0.684 | 0.345 | 200 |
-| trained | 1 | 0.754 | 0.012 | 0.674 | 0.332 | 200 |
-| trained | 2 | 0.747 | 0.017 | 0.664 | 0.315 | 200 |
-| trained | 3 | 0.751 | 0.018 | 0.667 | 0.290 | 200 |
+| Actual cause | Snapshots | computational_stress | energy_stress | network_degradation | none | thermal_stress |
+|---|---:|---:|---:|---:|---:|---:|
+| battery | 22 | 0.00 (0) | 0.86 (19) | 0.14 (3) | 0.00 (0) | 0.00 (0) |
+| sudden | 122 | 0.02 (2) | 0.16 (20) | 0.30 (37) | 0.52 (63) | 0.00 (0) |
+| wear-out | 278 | 0.04 (11) | 0.92 (255) | 0.04 (11) | 0.00 (0) | 0.00 (1) |
 
-Same ablation applied to the threshold baseline:
+Battery failures should be blamed on energy stress. Sudden failures have no precursor by construction, so the network should mostly raise nothing for them. For wear-out, energy stress is the expected answer in this simulator: a fog node's wear rate rises with its energy depletion as well as its load and heat, and a worn node draws extra power, so the drain rate is the earliest symptom of wear (it is also the channel whose loss costs the most PR-AUC in section 6); computational and thermal symptoms grow later, with the square and the 1.5th power of the damage.
 
-| rule | channels withheld | F1 | alarms raised | predictions made |
-|---|---|---|---|---|
-| threshold on CPU | 0 | 0.182 | 8.0 | 200.0 |
-| threshold on CPU | 1 | 0.139 | 6.1 | 153.3 |
-| threshold on CPU | 2 | 0.145 | 6.4 | 160.0 |
-| threshold on CPU | 3 | 0.109 | 4.8 | 120.0 |
+## 6. Partial evidence
 
-Two things are worth reading carefully here, and one of them is not the result that was expected.
+| Channel withheld | PR-AUC | ROC-AUC | Change in PR-AUC |
+|---|---:|---:|---:|
+| energy_drain | 0.5323 | 0.8657 | -0.1070 |
+| temperature | 0.5921 | 0.8659 | -0.0472 |
+| uplink_latency | 0.5930 | 0.8706 | -0.0463 |
+| residual_energy | 0.6029 | 0.8649 | -0.0364 |
+| latency_trend | 0.6391 | 0.8669 | -0.0002 |
+| cpu_util | 0.6391 | 0.8667 | -0.0002 |
+| queue_depth | 0.6393 | 0.8667 | -0.0000 |
+| ram_util | 0.6393 | 0.8676 | -0.0000 |
+| queue_trend | 0.6393 | 0.8669 | -0.0000 |
+| cpu_trend | 0.6393 | 0.8670 | +0.0000 |
+| jitter_pktloss | 0.6398 | 0.8684 | +0.0005 |
+| handover_rate | 0.6400 | 0.8665 | +0.0007 |
+| temp_trend | 0.6442 | 0.8663 | +0.0049 |
 
-Discrimination barely moves. Withholding three of the seven observable channels leaves the BBN's ROC-AUC essentially where it started, rather than degrading it. That is a property of this telemetry, not a triumph of the model: the channels are largely redundant, because the same underlying degradation drives utilisation, queueing, jitter and energy together, so any surviving subset still carries most of the signal. What does move, and in the direction the theory predicts, is the sharpness of the posterior — the mean P(fail) slides steadily back toward the prior as evidence is removed, which is the model correctly becoming less certain rather than less correct.
+| Channels withheld (random) | PR-AUC | s.d. | ROC-AUC | Predictions made |
+|---:|---:|---:|---:|---:|
+| 0 | 0.6393 | 0.0000 | 0.8665 | 159,813 |
+| 1 | 0.6192 | 0.0343 | 0.8671 | 159,813 |
+| 2 | 0.5991 | 0.0409 | 0.8683 | 159,813 |
+| 3 | 0.5592 | 0.1169 | 0.8662 | 159,813 |
+| 4 | 0.5168 | 0.0858 | 0.8649 | 159,813 |
+| 5 | 0.5667 | 0.0297 | 0.8654 | 159,813 |
+| 6 | 0.5210 | 0.1094 | 0.8629 | 159,813 |
 
-The structural difference is in the last column of each table. The BBN returns a posterior for all 200 cases no matter which channels are dark, because the missing variables are marginalised out by Eq. (1) rather than imputed. The threshold rule cannot: in the trials where CPU utilisation is the withheld channel it has nothing to compare against, raises no alarm at all, and every failing node passes unflagged. That is the difference between an answer with wider error bars and no answer, and it is the reason the paper argues for a probabilistic model over a fixed threshold.
+A prediction is produced for every snapshot however many channels are dark: missing evidence is summed out of Eq. (1), never imputed.
 
-## 6. Comparison with a threshold baseline
-
-Single-metric rule, CPU utilisation ≥ 0.30, tuned to its own best F1 on these same cases:
-
-| rule | ROC-AUC | precision | recall | F1 | accuracy |
-|---|---|---|---|---|---|
-| threshold on CPU (FTAPA-style) | 0.622 | 1.000 | 0.100 | 0.182 | 0.640 |
-| BBN (elicited) | 0.622 | 0.440 | 0.963 | 0.604 | 0.495 |
-| BBN (trained) | 0.767 | 0.523 | 0.988 | 0.684 | 0.635 |
-
-The baseline is given every advantage here. Its cut is tuned on the very cases it is scored on, which the BBN's elicited tables never saw, and CPU utilisation reports on every case in this set, so its structural weakness under missing telemetry costs it nothing. On those terms it is competitive: its AUC sits inside the refined model's confidence interval, and this evaluation set is too small to separate them. The honest summary is that with complete telemetry and a threshold tuned on the test data, the single metric rule does well — and that the case for the BBN rests on the calibrated posterior of Section 3, which a threshold does not produce at all, and on the behaviour under missing telemetry in Section 5.
-
-## Figures
-
-![roc.png](roc.png)
-![calibration.png](calibration.png)
-![partial_evidence.png](partial_evidence.png)
-
-## Reproducing this
-
-```
-bash run_all.sh
-```
-
-The simulator seed and dataset seed are fixed. The final fit uses the complete training pool with class-weighted EM; no held-out scenario is used for training.
+![Partial evidence](partial_evidence.png)

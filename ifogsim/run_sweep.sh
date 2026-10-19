@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 #
-# Run the telemetry sweep: every scenario of the iFogSim simulation, one JVM each,
-# writing the labelled snapshots to ../data/raw/scenario_NN.csv.
+# Java-only telemetry sweep: every (or selected) scenario for one seed, one JVM each,
+# writing labelled snapshots to ../data/raw/scenario_SS_seed_K.csv.
 #
-#   ./run_sweep.sh                 # all 12 scenarios
-#   ./run_sweep.sh 0 3 7           # only these three
-#   SWEEP_SEED=12345 ./run_sweep.sh
+#   ./run_sweep.sh                    # all 12 scenarios, seed 101
+#   ./run_sweep.sh 0 3 7              # only these scenarios
+#   SWEEP_SEED=201 ./run_sweep.sh     # another seed
 #
-# One JVM per scenario because CloudSim keeps its clock, entity list and event
-# queue in statics, and iFogSim's Controller calls System.exit(0) on STOP_SIMULATION.
+# The full experimental design (training and held-out seeds, run in parallel) is
+# model/generate_telemetry.py; this script is for running the simulator by hand.
 #
-# Run from inside ifogsim/: the simulator's DataParser resolves ./dataset/...
-# relative to the working directory.
+# One JVM per scenario because CloudSim keeps its clock, entity list and event queue in
+# statics. Run from inside ifogsim/: the simulator resolves ./dataset/... relative to
+# the working directory (the script roots itself there).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,15 +21,15 @@ cd "$ROOT"
 CLASSES="build/classes"
 CP="$CLASSES:jars/*:jars/commons-math3-3.5/*"
 RAW="../data/raw"
-SEED="${SWEEP_SEED:-20260912}"
+SEED="${SWEEP_SEED:-101}"
+SIM_TIME="${SIM_TIME:-10000}"
 
-if [ ! -d "$CLASSES/org/fog/ft" ]; then
+if [ ! -f "$CLASSES/org/fog/ft/ScenarioSweep.class" ]; then
     echo "Not compiled yet. Run ./build.sh first." >&2
     exit 1
 fi
 
 COUNT=$(java -cp "$CP" org.fog.ft.ScenarioSweep --list | head -1 | grep -o '[0-9]*$')
-
 if [ $# -gt 0 ]; then
     SCENARIOS=("$@")
 else
@@ -37,18 +38,9 @@ else
 fi
 
 mkdir -p "$RAW"
-echo "running ${#SCENARIOS[@]} of $COUNT scenarios, seed $SEED"
-echo "output: $RAW/"
-echo
-
+echo "running ${#SCENARIOS[@]} of $COUNT scenarios, seed $SEED, sim time $SIM_TIME"
 for i in "${SCENARIOS[@]}"; do
-    OUT=$(printf "%s/scenario_%02d.csv" "$RAW" "$i")
-    printf -- '-- scenario %s --\n' "$i"
-    java -cp "$CP" org.fog.ft.ScenarioSweep "$i" "$SEED" "$OUT" \
-        | grep -E 'scenario [0-9]+ \(|snapshots written|nodes that failed|positive snapshots|rows reported' \
-        || true
-    echo
+    OUT=$(printf "%s/scenario_%02d_seed_%s.csv" "$RAW" "$i" "$SEED")
+    java -cp "$CP" org.fog.ft.ScenarioSweep "$i" "$SEED" "$OUT" "$SIM_TIME" \
+        | grep -E '^=== scenario|^failures|^telemetry' || true
 done
-
-echo "done. files in $RAW:"
-ls -la "$RAW"

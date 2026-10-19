@@ -21,3 +21,6 @@ ifogsim/results/
 # Local logs and temporary proof files
 *.log
 /tmp/
+
+# Local snapshot of the pre-Phase-II project state
+_backup/

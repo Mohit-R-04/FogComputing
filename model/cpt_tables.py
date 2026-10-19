@@ -30,15 +30,12 @@ import itertools
 import math
 
 from bbn_model import (
-    ALL_VARS,
-    EVIDENCE_VARS,
     INVERTED_VARS,
     ORDINAL_STATES,
-    PARENTS,
+    PAPER,
     PRIOR_VAR,
-    TARGET_STATES,
     TARGET_VAR,
-    states_of,
+    Structure,
 )
 
 # --------------------------------------------------------------------------
@@ -64,6 +61,17 @@ AGGREGATOR_WEIGHTS: dict[str, dict[str, float]] = {
     },
     "energy_stress": {"residual_energy": 1.0},
     "thermal_stress": {"temperature": 1.0},
+}
+
+#: Weights of the trend channels, used only when the structure includes them. They are
+#: smaller than the level channels they accompany: a rising CPU on an idle node matters
+#: less than a saturated one, but a node that is both loaded and getting worse is the
+#: profile of a node about to fail.
+TREND_WEIGHTS: dict[str, dict[str, float]] = {
+    "computational_stress": {"cpu_trend": 0.15, "queue_trend": 0.15},
+    "network_degradation": {"latency_trend": 0.25},
+    "energy_stress": {"energy_drain": 0.50},
+    "thermal_stress": {"temp_trend": 0.40},
 }
 
 #: Dispersion of each aggregator. Single-parent nodes are near-deterministic
@@ -150,42 +158,54 @@ def truncated_normal_row(mean: float, sigma: float) -> list[float]:
     return [p / total for p in row]
 
 
-def contribution_point(parent: str, value: str) -> float:
+def contribution_point(parent: str, value: str, structure: Structure = PAPER) -> float:
     """The point on [0, 1] that `parent` in state `value` contributes to its child.
 
-    Variables in ``INVERTED_VARS`` are flipped here and only here: a full battery
-    (``residual_energy = high``) contributes a *low* point to energy stress, and
-    dependable hardware (``reliability_prior = high``) contributes a low point to
-    failure risk.
+    An n-state ordinal parent maps its i-th state to the midpoint (i + 1/2) / n of the
+    i-th of n equal intervals -- low, medium, high to 1/6, 1/2, 5/6 for the paper's
+    three states. Variables in ``INVERTED_VARS`` are flipped here and only here: a full
+    battery (``residual_energy`` high) contributes a *low* point to energy stress, and
+    dependable hardware (``reliability_prior`` high) a low point to failure risk.
     """
-    point = STATE_POINTS[value]
+    states = structure.states(parent)
+    point = (states.index(value) + 0.5) / len(states)
     return 1.0 - point if parent in INVERTED_VARS else point
 
 
 def weighted_mean(parent_values: tuple[str, ...], parents: tuple[str, ...],
-                  weights: dict[str, float]) -> float:
-    """Weighted mean of the parents' contribution points."""
-    total_w = sum(weights[p] for p in parents)
-    return sum(weights[p] * contribution_point(p, v)
-               for p, v in zip(parents, parent_values)) / total_w
+                  weights: dict[str, float], structure: Structure = PAPER) -> float:
+    """Weighted mean of the parents' contribution points (parents without a weight,
+    such as the device class on a class-specific latent, do not move the elicited mean)."""
+    used = [(p, v) for p, v in zip(parents, parent_values) if p in weights]
+    total_w = sum(weights[p] for p, _ in used)
+    return sum(weights[p] * contribution_point(p, v, structure) for p, v in used) / total_w
 
 
-def build_aggregator_cpt(var: str, weights: dict[str, dict[str, float]],
-                         sigmas: dict[str, float]) -> dict[tuple[str, ...], list[float]]:
+def aggregator_weights(var: str, structure: Structure = PAPER) -> dict[str, float]:
+    """Elicited weights of a latent aggregator's parents in a given structure."""
+    w = dict(AGGREGATOR_WEIGHTS[var])
+    w.update(TREND_WEIGHTS.get(var, {}))
+    return {p: w[p] for p in structure.parents[var] if p in w}
+
+
+def build_aggregator_cpt(var: str, weights: dict[str, dict[str, float]] | None = None,
+                         sigmas: dict[str, float] | None = None,
+                         structure: Structure = PAPER) -> dict[tuple[str, ...], list[float]]:
     """CPT of one latent aggregator over its parents."""
-    parents = PARENTS[var]
-    w = weights[var]
-    sigma = sigmas[var]
+    parents = structure.parents[var]
+    w = weights[var] if weights is not None else aggregator_weights(var, structure)
+    sigma = (sigmas or AGGREGATOR_SIGMA)[var]
     table: dict[tuple[str, ...], list[float]] = {}
-    for config in itertools.product(*[states_of(p) for p in parents]):
-        table[config] = truncated_normal_row(weighted_mean(config, parents, w), sigma)
+    for config in itertools.product(*[structure.states(p) for p in parents]):
+        table[config] = truncated_normal_row(weighted_mean(config, parents, w, structure), sigma)
     return table
 
 
 def build_target_cpt(weights: dict[str, float],
                      base: float = BASE_FAILURE_PROB,
                      top: float = MAX_FAILURE_PROB,
-                     exponent: float = RISK_EXPONENT) -> dict[tuple[str, ...], list[float]]:
+                     exponent: float = RISK_EXPONENT,
+                     structure: Structure = PAPER) -> dict[tuple[str, ...], list[float]]:
     """CPT of the target over the four latent conditions and the reliability prior.
 
     The risk score is a weighted mean of the parents' ordinal points, with the
@@ -198,13 +218,13 @@ def build_target_cpt(weights: dict[str, float],
     parameter would not mean what it says and the model would be systematically
     under-confident in exactly the configurations that matter most.
     """
-    parents = PARENTS[TARGET_VAR]
+    parents = structure.parents[structure.target]
     total_w = sum(weights[p] for p in parents)
     max_point = max(STATE_POINTS.values())
 
     table: dict[tuple[str, ...], list[float]] = {}
-    for config in itertools.product(*[states_of(p) for p in parents]):
-        score = sum(weights[parent] * contribution_point(parent, value)
+    for config in itertools.product(*[structure.states(p) for p in parents]):
+        score = sum(weights[parent] * contribution_point(parent, value, structure)
                     for parent, value in zip(parents, config))
         score /= total_w * max_point
 
@@ -215,27 +235,30 @@ def build_target_cpt(weights: dict[str, float],
     return table
 
 
-def build_all_cpts(weights=None) -> dict[str, dict[tuple[str, ...], list[float]]]:
-    """Builds every CPT in the network.
+def build_all_cpts(weights=None, structure: Structure = PAPER) -> dict[str, dict[tuple[str, ...], list[float]]]:
+    """Builds every CPT of a structure from the elicited parameters.
 
-    ``weights`` optionally overrides the elicited parameters; ``train_bbn.py``
-    uses it to hand back tables refined from observed outcomes.
+    ``weights`` optionally supplies complete tables (trained ones) and is returned as is.
     """
     if weights is not None:
         return weights
 
     cpts: dict[str, dict[tuple[str, ...], list[float]]] = {}
+    prior_states = structure.states(structure.prior)
+    for var in structure.evidence:
+        uniform = [1.0 / structure.card(var)] * structure.card(var)
+        if structure.parents[var]:
+            cpts[var] = {(p,): list(uniform) for p in prior_states}
+        else:
+            cpts[var] = {(): list(uniform)}
+    cpts[structure.prior] = {(): list(RELIABILITY_PRIOR_MARGINAL)}
 
-    for var in EVIDENCE_VARS:
-        cpts[var] = {(): list(EVIDENCE_PRIOR)}
-    cpts[PRIOR_VAR] = {(): list(RELIABILITY_PRIOR_MARGINAL)}
+    for var in structure.latent:
+        cpts[var] = build_aggregator_cpt(var, structure=structure)
 
-    for var in AGGREGATOR_WEIGHTS:
-        cpts[var] = build_aggregator_cpt(var, AGGREGATOR_WEIGHTS, AGGREGATOR_SIGMA)
+    cpts[structure.target] = build_target_cpt(TARGET_WEIGHTS, structure=structure)
 
-    cpts[TARGET_VAR] = build_target_cpt(TARGET_WEIGHTS)
-
-    missing = set(ALL_VARS) - set(cpts)
+    missing = set(structure.variables) - set(cpts)
     if missing:
         raise AssertionError(f"CPTs not generated for {sorted(missing)}")
     return cpts
@@ -247,6 +270,10 @@ def describe() -> str:
     for var, w in AGGREGATOR_WEIGHTS.items():
         parts = ", ".join(f"{k}={v:.2f}" for k, v in w.items())
         lines.append(f"  {var:22s} sigma={AGGREGATOR_SIGMA[var]:.2f}  {parts}")
+    lines += ["", "Trend weights (extended structure only):"]
+    for var, w in TREND_WEIGHTS.items():
+        parts = ", ".join(f"{k}={v:.2f}" for k, v in w.items())
+        lines.append(f"  {var:22s} {parts}")
     lines += ["", "Target weights:"]
     for k, v in TARGET_WEIGHTS.items():
         lines.append(f"  {k:22s} {v:.2f}")

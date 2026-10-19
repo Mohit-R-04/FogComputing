@@ -9,56 +9,88 @@ import org.cloudbus.cloudsim.Storage;
 import org.cloudbus.cloudsim.Vm;
 import org.cloudbus.cloudsim.core.CloudSim;
 import org.cloudbus.cloudsim.core.SimEvent;
+import org.fog.application.AppModule;
 import org.fog.entities.FogDevice;
 import org.fog.entities.FogDeviceCharacteristics;
 import org.fog.entities.Tuple;
 import org.fog.policy.AppModuleAllocationPolicy;
 import org.fog.utils.Config;
+import org.fog.utils.FogEvents;
+import org.fog.utils.NetworkUsageMonitor;
 
 /**
- * A {@link FogDevice} that emits a telemetry snapshot at every resource-management
- * epoch.
+ * A {@link FogDevice} that reports telemetry every resource-management epoch, degrades
+ * according to the {@link FaultInjector}, and genuinely stops when it fails.
  *
- * <p>The hook is {@link FogDevice#manageResources(SimEvent)}, which iFogSim already
- * fires at t=0 from {@code Controller.startEntity()} and which each device then
- * reschedules every {@code Config.RESOURCE_MGMT_INTERVAL} time units. Overriding it
- * gives per-epoch sampling without modifying a single existing iFogSim source file.
+ * <p>Everything here is a subclass override; no upstream iFogSim file is modified.
  *
- * <p><b>Every reported value is the simulator's own.</b> Nothing is synthesised here
- * and nothing is layered on top of what iFogSim produces. Where a quantity needs a
- * reference point that iFogSim does not define -- energy capacity, since
- * {@code getEnergyConsumption()} is a total that only rises and the simulator has no
- * notion of a battery -- the reference is declared in {@link ScenarioSpec} and named
- * as such. Variation between rows comes from the scenario sweep changing the nodes,
- * not from anything added afterwards.
+ * <h2>Telemetry</h2>
+ * The hook is {@link FogDevice#manageResources(SimEvent)}, which iFogSim fires at t=0 and
+ * every {@code Config.RESOURCE_MGMT_INTERVAL} afterwards. Each snapshot is measured from
+ * live simulator state: work executed against capacity (CPU), the RAM provisioner, tuple
+ * queues and arrivals, link delay plus transmission load, arrival-time jitter, topology
+ * churn, iFogSim's cumulative energy against a declared budget, and a lumped thermal
+ * model driven by the measured utilisation. The agent also reports the trend of each
+ * reading over its last three samples.
+ *
+ * <h2>Degradation inside the simulator</h2>
+ * A worn node needs more CPU work per tuple (work inflation), its interface adds delay,
+ * it draws extra power and it runs hotter. iFogSim's own scheduler, links and energy
+ * model turn those into longer queues, higher utilisation, longer loop delays and
+ * faster battery drain -- which is what the telemetry then observes.
+ *
+ * <h2>Failure</h2>
+ * At its failure instant the device drops every tuple it receives, clears its queues and
+ * stops reporting. Users attached to it lose service until the active fault-tolerance
+ * policy recovers them.
+ *
+ * <h2>Routing</h2>
+ * Upstream iFogSim broadcasts a downward tuple to every child; a verdict computed in the
+ * cloud reached all 118 fog nodes and every user. Downward tuples are routed here only
+ * towards the edge device whose {@code client} instance they belong to.
  */
 public class InstrumentedFogDevice extends FogDevice {
 
     private final String deviceClass;
     private final double reliabilityPrior;
-    /** Declared energy capacity, in the simulator's watt-time units. */
+    /** Declared energy capacity, in the simulator's power x time units. */
     private final double energyBudget;
+    /** Busy power of the device, used to scale degradation's extra draw. */
+    private final double busyPower;
+    /** Whether the device exposes a temperature sensor (fog and cloud do; edge does not). */
+    private final boolean hasThermalSensor;
+    /** Temperature rise at full utilisation, degrees Celsius. */
+    private final double thermalRiseC;
 
-    // ---- handovers -----------------------------------------------------------
-    /** Epochs of history retained for the handover rate. */
     private static final int HANDOVER_WINDOW_EPOCHS = 5;
-    private final ArrayDeque<Integer> handoverWindow = new ArrayDeque<Integer>();
-    private int handoversThisEpoch = 0;
-    /** Suppresses handover counting during topology construction. */
-    private boolean topologyBuilt = false;
-
-    // ---- arrivals, for queue depth and jitter --------------------------------
-    private int arrivalsThisWindow = 0;
-    private double arrivedMiThisWindow = 0.0;
-    /** Network bytes carried by tuples reaching this device during the window. */
-    private double arrivedBytesThisWindow = 0.0;
-    /** Simulation times at which tuples reached this device during the window. */
-    private final ArrayDeque<Double> arrivalTimes = new ArrayDeque<Double>();
-    /** Cap on retained timestamps, so a busy node does not grow without bound. */
+    private static final int TREND_WINDOW = 3;
+    private static final double THERMAL_TAU_EPOCHS = 2.5;
+    private static final double THERMAL_NOISE_C = 0.8;
     private static final int MAX_ARRIVAL_TIMES = 512;
 
-    /** MI of tuples dispatched to this host's CPU during the window. */
+    private final ArrayDeque<Integer> handoverWindow = new ArrayDeque<Integer>();
+    private int handoversThisEpoch = 0;
+    private boolean topologyBuilt = false;
+
+    private int arrivalsThisWindow = 0;
+    private double arrivedMiThisWindow = 0.0;
+    private double arrivedBytesThisWindow = 0.0;
+    private final ArrayDeque<Double> arrivalTimes = new ArrayDeque<Double>();
     private double executedMiThisWindow = 0.0;
+
+    private double ambientC = 25.0;
+    private double modelTemperature = Double.NaN;
+
+    private final ArrayDeque<Double> cpuHist = new ArrayDeque<Double>();
+    private final ArrayDeque<Double> queueHist = new ArrayDeque<Double>();
+    private final ArrayDeque<Double> latencyHist = new ArrayDeque<Double>();
+    private final ArrayDeque<Double> tempHist = new ArrayDeque<Double>();
+    private double lastReportedEnergy = Double.NaN;
+    private double lastReportedEnergyTime = Double.NaN;
+
+    private boolean failed = false;
+    private double failedAt = Double.NaN;
+    private NodeTelemetry latest;
 
     public InstrumentedFogDevice(String name,
                                  FogDeviceCharacteristics characteristics,
@@ -70,18 +102,35 @@ public class InstrumentedFogDevice extends FogDevice {
                                  double uplinkLatency,
                                  double ratePerMips,
                                  String deviceClass,
-                                 double energyBudget) throws Exception {
+                                 double energyBudget,
+                                 double busyPower,
+                                 boolean hasThermalSensor,
+                                 double thermalRiseC) throws Exception {
         super(name, characteristics, allocationPolicy, storageList, schedulingInterval,
               uplinkBandwidth, downlinkBandwidth, uplinkLatency, ratePerMips);
         this.deviceClass = deviceClass;
         this.reliabilityPrior = FaultInjector.reliabilityPriorFor(deviceClass);
         this.energyBudget = energyBudget;
+        this.busyPower = busyPower;
+        this.hasThermalSensor = hasThermalSensor;
+        this.thermalRiseC = thermalRiseC;
+        RunContext.injector().register(name, deviceClass);
+        SessionRegistry.get().registerDevice(this);
     }
 
     /** Call once the topology is wired, so setup-time parent assignment is not counted. */
     public void markTopologyBuilt() {
         this.topologyBuilt = true;
+        if (hasThermalSensor) {
+            double u = FtRandom.uniform(FtRandom.key(RunContext.seed(), RunContext.scenarioId(),
+                    FtRandom.hash(getName()), 0, FtRandom.S_AMBIENT));
+            // Climate-controlled datacentre versus street cabinets in the Melbourne CBD.
+            ambientC = "cloud".equals(deviceClass) ? 20.0 : 22.0 + 12.0 * u;
+            modelTemperature = ambientC;
+        }
     }
+
+    // ---- topology churn -------------------------------------------------------------
 
     @Override
     public void setParentId(int parentId) {
@@ -93,97 +142,350 @@ public class InstrumentedFogDevice extends FogDevice {
     }
 
     @Override
+    public void addChild(int childId) {
+        boolean had = getChildrenIds().contains(childId);
+        super.addChild(childId);
+        if (topologyBuilt && !had && getChildrenIds().contains(childId)) {
+            handoversThisEpoch++;
+        }
+    }
+
+    @Override
+    public void removeChild(int childId) {
+        boolean had = getChildrenIds().contains(childId);
+        super.removeChild(childId);
+        if (topologyBuilt && had) {
+            handoversThisEpoch++;
+        }
+    }
+
+    // ---- failure ----------------------------------------------------------------------
+
+    @Override
+    protected void processOtherEvent(SimEvent ev) {
+        if (ev.getTag() == FtEvents.NODE_FAIL) {
+            markFailed();
+            return;
+        }
+        super.processOtherEvent(ev);
+    }
+
+    private void markFailed() {
+        if (failed) {
+            return;
+        }
+        failed = true;
+        failedAt = CloudSim.clock();
+        getNorthTupleQueue().clear();
+        getSouthTupleQueue().clear();
+        SessionRegistry.get().onDeviceFailed(this, failedAt);
+    }
+
+    public boolean isFailed() {
+        return failed;
+    }
+
+    public double failedAt() {
+        return failedAt;
+    }
+
+    // ---- module bookkeeping -------------------------------------------------------------
+
+    @Override
+    protected void processModuleArrival(SimEvent ev) {
+        super.processModuleArrival(ev);
+        Object data = ev.getData();
+        if (data instanceof AppModule && "client".equals(((AppModule) data).getName())) {
+            SessionRegistry.get().registerClientVm(((AppModule) data).getId(), getId());
+        }
+    }
+
+    public boolean hostsModule(String appId, String module) {
+        List<String> modules = appToModulesMap.get(appId);
+        return modules != null && modules.contains(module);
+    }
+
+    // ---- tuple flow ---------------------------------------------------------------------
+
+    @Override
     protected void processTupleArrival(SimEvent ev) {
         Object data = ev.getData();
-        if (data instanceof Tuple) {
-            Tuple tuple = (Tuple) data;
-            arrivalsThisWindow++;
-            arrivedMiThisWindow += tuple.getCloudletLength();
-            arrivedBytesThisWindow += tuple.getCloudletFileSize();
-            if (arrivalTimes.size() < MAX_ARRIVAL_TIMES) {
-                arrivalTimes.addLast(CloudSim.clock());
+        if (!(data instanceof Tuple)) {
+            super.processTupleArrival(ev);
+            return;
+        }
+        Tuple tuple = (Tuple) data;
+        SessionRegistry registry = SessionRegistry.get();
+
+        if (failed) {
+            if ("ecg_analyser".equals(tuple.getDestModuleName())) {
+                ServiceSession s = registry.sessionForTuple(tuple);
+                if (s != null) s.analysesDroppedFailedNode++;
+            }
+            return;
+        }
+
+        arrivalsThisWindow++;
+        arrivedMiThisWindow += tuple.getCloudletLength();
+        arrivedBytesThisWindow += tuple.getCloudletFileSize();
+        if (arrivalTimes.size() < MAX_ARRIVAL_TIMES) {
+            arrivalTimes.addLast(CloudSim.clock());
+        }
+
+        String dest = tuple.getDestModuleName();
+        boolean hostsDest = dest != null && hostsModule(tuple.getAppId(), dest);
+
+        // A session that is down (being restored, migrated or cold-started) cannot
+        // analyse: its tuples are lost, exactly as they would be in deployment.
+        if (hostsDest && "ecg_analyser".equals(dest) && tuple.getDirection() == Tuple.UP) {
+            ServiceSession s = registry.sessionForTuple(tuple);
+            if (s != null && !s.isAvailable(CloudSim.clock())) {
+                s.analysesDroppedUnavailable++;
+                return;
+            }
+        }
+
+        if (!hostsDest && dest != null && tuple.getDirection() == Tuple.DOWN) {
+            int target = registry.edgeForTuple(tuple);
+            if (target >= 0 && target != getId()) {
+                int child = getChildrenIds().contains(target) ? target : getChildIdWithRouteTo(target);
+                if (child != -1) {
+                    sendDown(tuple, child);
+                } else if (!forwardToCurrentGateway(tuple, target)) {
+                    ServiceSession s = registry.session(target);
+                    if (s != null) s.analysesDroppedUnavailable++;
+                }
+                return;
             }
         }
         super.processTupleArrival(ev);
+    }
+
+    /** Backhaul delay of forwarding a tuple to a user's new gateway, in ms. */
+    private static final double FORWARD_LATENCY = 5.0;
+    private static final int MAX_FORWARDS = 2;
+
+    /**
+     * The user handed over while its result was in flight. Like mobile IP, the old
+     * gateway forwards the tuple once over the backhaul to the user's current gateway,
+     * instead of dropping it because iFogSim's routing only walks the tree. Bounded, so
+     * a user moving repeatedly cannot make a tuple circulate.
+     */
+    private boolean forwardToCurrentGateway(Tuple tuple, int target) {
+        FogDevice edge = SessionRegistry.get().device(target);
+        if (edge == null) return false;
+        FogDevice gateway = SessionRegistry.get().device(edge.getParentId());
+        if (!(gateway instanceof InstrumentedFogDevice) || gateway == this
+                || ((InstrumentedFogDevice) gateway).isFailed()) {
+            return false;
+        }
+        if (SessionRegistry.get().countForward(tuple.getCloudletId()) > MAX_FORWARDS) return false;
+        send(gateway.getId(), FORWARD_LATENCY, FogEvents.TUPLE_ARRIVAL, tuple);
+        NetworkUsageMonitor.sendingTuple(FORWARD_LATENCY, tuple.getCloudletFileSize());
+        return true;
     }
 
     @Override
     protected void executeTuple(SimEvent ev, String moduleName) {
         Object data = ev.getData();
         if (data instanceof Tuple) {
-            executedMiThisWindow += ((Tuple) data).getCloudletLength();
+            Tuple tuple = (Tuple) data;
+            double factor = RunContext.injector().slowdown(getName());
+            if (factor > 1.0 + 1e-9) {
+                tuple.setCloudletLength((long) Math.ceil(tuple.getCloudletLength() * factor));
+            }
+            executedMiThisWindow += tuple.getCloudletLength();
         }
         super.executeTuple(ev, moduleName);
     }
 
     @Override
+    protected void sendUp(Tuple tuple) {
+        if (getLevel() == 2 && "ecg_analyser".equals(tuple.getDestModuleName())) {
+            ServiceSession s = SessionRegistry.get().session(getId());
+            if (s != null) s.analysesEmitted++;
+        }
+        if (failed) return;
+        super.sendUp(tuple);
+    }
+
+    @Override
+    protected void sendDown(Tuple tuple, int childId) {
+        if (failed) return;
+        super.sendDown(tuple, childId);
+    }
+
+    @Override
+    protected void sendTupleToActuator(Tuple tuple) {
+        if (failed) return;
+        super.sendTupleToActuator(tuple);
+    }
+
+    @Override
+    protected void updateNorthTupleQueue() {
+        if (failed) {
+            getNorthTupleQueue().clear();
+            setNorthLinkBusy(false);
+            return;
+        }
+        super.updateNorthTupleQueue();
+    }
+
+    @Override
+    protected void updateSouthTupleQueue() {
+        if (failed) {
+            getSouthTupleQueue().clear();
+            setSouthLinkBusy(false);
+            return;
+        }
+        super.updateSouthTupleQueue();
+    }
+
+    /** Upstream logic with this node's degradation applied to its interface delay. */
+    @Override
+    protected void sendDownFreeLink(Tuple tuple, int childId) {
+        double networkDelay = tuple.getCloudletFileSize() / getDownlinkBandwidth();
+        setSouthLinkBusy(true);
+        Double base = getChildToLatencyMap().get(childId);
+        double latency = (base == null ? 0.0 : base) * RunContext.injector().latencyFactor(getName());
+        send(getId(), networkDelay, FogEvents.UPDATE_SOUTH_TUPLE_QUEUE);
+        send(childId, networkDelay + latency, FogEvents.TUPLE_ARRIVAL, tuple);
+        NetworkUsageMonitor.sendingTuple(latency, tuple.getCloudletFileSize());
+    }
+
+    /** Link delay including this node's interface degradation. */
+    @Override
+    public double getUplinkLatency() {
+        return super.getUplinkLatency() * RunContext.injector().latencyFactor(getName());
+    }
+
+    /** Configured link delay without degradation (geometry only). */
+    public double getBaseUplinkLatency() {
+        return super.getUplinkLatency();
+    }
+
+    // ---- epoch: degrade, measure, report ------------------------------------------------
+
+    @Override
     protected void manageResources(SimEvent ev) {
-        // Let iFogSim do its own energy and cost accounting first, untouched. The
-        // energy figure read below is the one super() has just updated.
+        if (failed) {
+            return; // a dead node neither accounts energy nor reports
+        }
         super.manageResources(ev);
-        TelemetryCollector.getInstance().record(snapshot());
+        addDegradationEnergy();
+
+        NodeTelemetry truth = measure();
+        FaultInjector injector = RunContext.injector();
+        double failureTime = injector.step(truth, Config.RESOURCE_MGMT_INTERVAL);
+        if (!Double.isNaN(failureTime)) {
+            send(getId(), Math.max(0.0, failureTime - CloudSim.clock()), FtEvents.NODE_FAIL);
+        }
+        latest = report(truth, injector.health(getName()));
+        TelemetryCollector.getInstance().record(latest);
     }
 
-    /** Builds one telemetry snapshot from the current state of this device. */
-    private NodeTelemetry snapshot() {
-        double cpuUtil = cpuUtilisation();
-        double ramUtil = ramUtilisation();
+    /** Most recent reported snapshot (what the control plane sees). */
+    public NodeTelemetry latestTelemetry() {
+        return latest;
+    }
 
-        // Order matters: queueDepth() consumes and resets the arrival counters, so
-        // jitter has to be computed from the timestamps first.
+    private void addDegradationEnergy() {
+        double extra = RunContext.injector().extraPowerFraction(getName())
+                * busyPower * Config.RESOURCE_MGMT_INTERVAL;
+        if (extra > 0) {
+            setEnergyConsumption(getEnergyConsumption() + extra);
+        }
+    }
+
+    /** True state of the node this epoch (before any telemetry dropout). */
+    private NodeTelemetry measure() {
+        double cpu = cpuUtilisation();
+        double ram = ramUtilisation();
+        // Order matters: queueDepth() consumes the arrival counters, so jitter and
+        // latency read them first.
         double jitter = arrivalJitter();
-        double uplinkLatency = effectiveUplinkLatency();
-        int queueDepth = queueDepth();
-        double residualEnergy = residualEnergy();
-
-        handoverWindow.addLast(handoversThisEpoch);
-        while (handoverWindow.size() > HANDOVER_WINDOW_EPOCHS) {
-            handoverWindow.removeFirst();
-        }
-        int handovers = 0;
-        for (Integer h : handoverWindow) {
-            handovers += h;
-        }
-        handoversThisEpoch = 0;
-
-        return new NodeTelemetry(
-                getId(), getName(), getLevel(), deviceClass, CloudSim.clock(),
-                cpuUtil, ramUtil, queueDepth, uplinkLatency, jitter,
-                handovers, residualEnergy,
-                Double.NaN,               // no thermal sensor on simulated nodes
-                reliabilityPrior);
+        double latency = effectiveUplinkLatency();
+        double queue = queueDepth();
+        double energy = residualEnergy();
+        double handovers = handoverWindowSum();
+        double temperature = updateThermalModel(cpu);
+        return new NodeTelemetry(RunContext.scenarioId(), RunContext.seed(), getId(), getName(),
+                getLevel(), deviceClass, CloudSim.clock(),
+                cpu, ram, queue, latency, jitter, handovers, energy, temperature,
+                Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN,
+                reliabilityPrior, RunContext.injector().health(getName()));
     }
 
-    // ---- the eight channels --------------------------------------------------
+    /** The agent's report: sensor noise, dropout, and trends over reported history. */
+    private NodeTelemetry report(NodeTelemetry t, double healthAfterStep) {
+        long nodeHash = FtRandom.hash(getName());
+        long epochIndex = Math.round(t.epoch / Config.RESOURCE_MGMT_INTERVAL);
+        long seed = RunContext.seed();
+        int scenario = RunContext.scenarioId();
 
-    /**
-     * CPU utilisation over the reporting window: work actually executed against the
-     * work the host could have executed.
-     *
-     * <pre>
-     *   cpu_util = MI dispatched to this host's CPU during the window
-     *              -----------------------------------------------------
-     *                        hostMips x window length
-     * </pre>
-     *
-     * <p>The numerator is accumulated in {@link #executeTuple}, which iFogSim calls
-     * as each tuple is submitted to a module's scheduler on this device, so it is the
-     * simulator's own account of work done here.
-     *
-     * <p>Two instantaneous alternatives were tried first and both failed for the same
-     * underlying reason -- a sample taken at an epoch boundary says nothing about the
-     * epoch. iFogSim's own {@code lastUtilization} divides <i>allocated</i> MIPS by
-     * host MIPS, but the overbooking provisioners hand a lone module the whole host
-     * regardless of its workload, so it pins to 1.0 on any device carrying a module.
-     * Requested MIPS capped at each module's provisioned share is honest about demand
-     * but is effectively binary: a module either has a tuple queued at that instant or
-     * it does not, and measured that way cpu_util took just two distinct values per
-     * device class across an entire run.
-     *
-     * <p>Work per unit time is both the standard definition of utilisation over an
-     * interval and what a real telemetry agent reports, and it varies continuously
-     * with load.
-     */
+        double temperature = t.temperature;
+        if (!Double.isNaN(temperature)) {
+            temperature += THERMAL_NOISE_C * FtRandom.normal(FtRandom.key(seed, scenario, nodeHash,
+                    epochIndex, FtRandom.S_THERMAL_NOISE));
+        }
+        double[] v = {t.cpuUtil, t.ramUtil, t.queueDepth, t.uplinkLatency, t.jitterPktLoss,
+                      t.handoverRate, t.residualEnergy, temperature};
+
+        RunContext.Dropout mode = RunContext.dropout();
+        if (mode != RunContext.Dropout.NONE && RunContext.dropoutRate() > 0) {
+            double rate = RunContext.dropoutRate();
+            if (mode == RunContext.Dropout.MNAR) {
+                rate = Math.min(0.95, rate * (1.0 + (1.0 - healthAfterStep)));
+            }
+            for (int ch = 0; ch < v.length; ch++) {
+                double u = FtRandom.uniform(FtRandom.key(seed, scenario, nodeHash, epochIndex,
+                        FtRandom.S_DROPOUT + ch));
+                if (u < rate) {
+                    v[ch] = Double.NaN;
+                }
+            }
+        }
+
+        double cpuTrend = trend(v[0], cpuHist, false);
+        double queueTrend = trend(v[2], queueHist, true);
+        double latencyTrend = trend(v[3], latencyHist, true);
+        double tempTrend = trend(v[7], tempHist, false);
+        double energyDrain = Double.NaN;
+        if (!Double.isNaN(v[6])) {
+            if (!Double.isNaN(lastReportedEnergy)) {
+                double epochs = Math.max(1.0, (t.epoch - lastReportedEnergyTime)
+                        / Config.RESOURCE_MGMT_INTERVAL);
+                energyDrain = (lastReportedEnergy - v[6]) / epochs;
+            }
+            lastReportedEnergy = v[6];
+            lastReportedEnergyTime = t.epoch;
+        }
+
+        return new NodeTelemetry(t.scenarioId, t.seed, t.nodeId, t.nodeName, t.level,
+                t.deviceClass, t.epoch, v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7],
+                cpuTrend, queueTrend, latencyTrend, tempTrend, energyDrain,
+                t.reliabilityPrior, healthAfterStep);
+    }
+
+    /** Change of a reading against the mean of the agent's previous readings. */
+    private static double trend(double value, ArrayDeque<Double> history, boolean relative) {
+        double out = Double.NaN;
+        if (!Double.isNaN(value) && !history.isEmpty()) {
+            double sum = 0.0;
+            for (Double d : history) sum += d;
+            double mean = sum / history.size();
+            out = relative ? (value - mean) / Math.max(1.0, Math.abs(mean)) : value - mean;
+        }
+        if (!Double.isNaN(value)) {
+            history.addLast(value);
+            while (history.size() > TREND_WINDOW) history.removeFirst();
+        }
+        return out;
+    }
+
+    // ---- the measurement channels -------------------------------------------------------
+
+    /** Work executed during the window against the work the host could execute. */
     private double cpuUtilisation() {
         double capacityMi = getHost().getTotalMips() * Config.RESOURCE_MGMT_INTERVAL;
         double executed = executedMiThisWindow;
@@ -192,15 +494,7 @@ public class InstrumentedFogDevice extends FogDevice {
         return Math.min(1.0, executed / capacityMi);
     }
 
-    /**
-     * RAM utilisation: allocated against host capacity, from the memory provisioner.
-     *
-     * <p>Note for anyone reading the data: iFogSim allocates a module's memory once,
-     * when it is placed, and never varies it. This channel is therefore genuinely
-     * constant for a given node within a run -- it distinguishes configurations, not
-     * moments. That is a property of the simulator, not a defect in the measurement,
-     * and it is why the scenario sweep varies both module RAM and host RAM.
-     */
+    /** Allocated RAM against capacity; iFogSim allocates module memory once at placement. */
     private double ramUtilisation() {
         Host host = getHost();
         int totalRam = host.getRam();
@@ -210,34 +504,23 @@ public class InstrumentedFogDevice extends FogDevice {
     }
 
     /**
-     * Pending work for the reporting window.
-     *
-     * <p>An instantaneous reading of the link and scheduler queues is useless here:
-     * iFogSim drains the link queues on the {@code UPDATE_*_TUPLE_QUEUE} events as
-     * soon as a link frees, and tuple execution completes well inside one
-     * hundred-unit epoch, so a sample taken at the epoch boundary finds both empty
-     * essentially always -- measured that way the variable was constant at zero
-     * across every snapshot.
-     *
-     * <p>What a real telemetry agent reports is not an instant but an interval: the
-     * work that arrived during the window, plus whatever is still resident at the
-     * end of it, plus any excess of arriving work over what the host could execute.
+     * Pending work for the window: tuples resident in link and scheduler queues, tuples
+     * that arrived, and the excess of arriving work over what the host could execute. A
+     * degraded node needs more work per tuple, so its effective arriving work is scaled.
      */
-    private int queueDepth() {
+    private double queueDepth() {
         int resident = 0;
-        if (getNorthTupleQueue() != null)   resident += getNorthTupleQueue().size();
-        if (getSouthTupleQueue() != null)   resident += getSouthTupleQueue().size();
+        if (getNorthTupleQueue() != null) resident += getNorthTupleQueue().size();
+        if (getSouthTupleQueue() != null) resident += getSouthTupleQueue().size();
         if (getClusterTupleQueue() != null) resident += getClusterTupleQueue().size();
-
         for (Object vmObj : getHost().getVmList()) {
             CloudletScheduler scheduler = ((Vm) vmObj).getCloudletScheduler();
             if (scheduler == null) continue;
             resident += scheduler.getCloudletExecList().size();
             resident += scheduler.getCloudletWaitingList().size();
         }
-
         int arrived = arrivalsThisWindow;
-        double arrivedMi = arrivedMiThisWindow;
+        double arrivedMi = arrivedMiThisWindow * RunContext.injector().slowdown(getName());
         arrivalsThisWindow = 0;
         arrivedMiThisWindow = 0.0;
 
@@ -247,118 +530,67 @@ public class InstrumentedFogDevice extends FogDevice {
             double meanMi = arrivedMi / arrived;
             backlog = (int) Math.round((arrivedMi - capacityMi) / Math.max(1.0, meanMi));
         }
-
         return resident + arrived + backlog;
     }
 
-    /**
-     * Jitter: the variability of tuple arrival timing over the window.
-     *
-     * <p>Measured as the coefficient of variation of the intervals between
-     * successive tuple arrivals recorded in {@link #processTupleArrival}, scaled
-     * into [0, 1]. This is not a proxy for jitter -- variability of arrival timing
-     * is the definition of jitter, so this is the quantity itself, computed from
-     * timestamps the simulation actually produced.
-     *
-     * <p>A previous version generated this channel from an exponentially weighted
-     * average of latency changes plus a random term, which is to say it was invented.
-     *
-     * <p><b>Packet loss has no counterpart here.</b> iFogSim has no loss model at
-     * all: no link drops a tuple, so there is nothing to measure. The paper names
-     * this variable "jitter with packet loss"; only the jitter half is observable in
-     * simulation, and the documentation says so rather than implying otherwise.
-     *
-     * <p>Fewer than three arrivals in a window gives no interval to compare against,
-     * so the channel reports nothing and is marginalised out for that row -- which
-     * is the correct treatment of a measurement that could not be taken.
-     */
+    /** Coefficient of variation of tuple inter-arrival times; NaN with < 3 arrivals. */
     private double arrivalJitter() {
         if (arrivalTimes.size() < 3) {
             arrivalTimes.clear();
-            return Double.NaN;   // not measurable this window
+            return Double.NaN;
         }
-
         Double[] times = arrivalTimes.toArray(new Double[0]);
         arrivalTimes.clear();
-
         int n = times.length - 1;
         double sum = 0.0;
-        for (int i = 0; i < n; i++) {
-            sum += times[i + 1] - times[i];
-        }
+        for (int i = 0; i < n; i++) sum += times[i + 1] - times[i];
         double mean = sum / n;
-        if (mean <= 0.0) {
-            return 0.0;   // all arrivals simultaneous: no jitter
-        }
-
+        if (mean <= 0.0) return 0.0;
         double variance = 0.0;
         for (int i = 0; i < n; i++) {
             double d = (times[i + 1] - times[i]) - mean;
             variance += d * d;
         }
-        double sd = Math.sqrt(variance / n);
-
-        // Coefficient of variation. A perfectly periodic stream gives 0; a CV of 1
-        // is Poisson-like, which is already badly jittered, so that is the ceiling.
-        return Math.min(1.0, sd / mean);
+        return Math.min(1.0, Math.sqrt(variance / n) / mean);
     }
 
-    /**
-     * Residual energy as a fraction of the node's declared capacity.
-     *
-     * <p>The consumption is iFogSim's own: {@code getEnergyConsumption()} accumulates
-     * {@code powerModel.getPower(utilisation) * elapsed} inside
-     * {@code FogDevice.updateEnergyConsumption()}, which {@code super.manageResources}
-     * has just run. The capacity comes from {@link ScenarioSpec#energyBudgetFor},
-     * because iFogSim has no battery concept -- consumption is a total that only
-     * rises, and "residual" is meaningless without something to measure it against.
-     *
-     * <p>Worth knowing when reading the data: iFogSim drives its power model from
-     * <i>allocated</i> MIPS, which saturates under the overbooking provisioners this
-     * topology uses. Energy therefore separates scenarios far more sharply than it
-     * separates epochs within a single run, since what really moves it is the node's
-     * power model and capacity rather than its moment-to-moment load.
-     */
+    /** Residual energy as a fraction of the declared capacity. */
     private double residualEnergy() {
         if (energyBudget <= 0) return 1.0;
-        double consumed = getEnergyConsumption();
-        return Math.min(1.0, Math.max(0.0, 1.0 - consumed / energyBudget));
+        return Math.min(1.0, Math.max(0.0, 1.0 - getEnergyConsumption() / energyBudget));
     }
 
-    /**
-     * Uplink latency: the configured link delay plus the time the window's traffic
-     * takes to clear the link.
-     *
-     * <pre>
-     *   uplink_latency = getUplinkLatency() + bytes arriving in the window
-     *                                         --------------------------
-     *                                            uplink bandwidth
-     * </pre>
-     *
-     * <p>The transmission term is iFogSim's own model of network delay --
-     * {@code FogDevice.sendUpFreeLink} computes exactly
-     * {@code cloudletFileSize / uplinkBandwidth} for each tuple -- applied to the
-     * traffic actually observed over the window.
-     *
-     * <p>This replaces an earlier version that added a penalty proportional to queue
-     * depth. That was wrong in a way worth recording: it made latency an almost
-     * exact linear function of the queue-depth channel, and the two correlated at
-     * r = 0.9998 across 72,000 rows. The BBN would then have been reading one
-     * measurement twice, once into computational stress and once into network
-     * degradation, which inflates the apparent weight of congestion and gives the
-     * network branch nothing of its own to contribute. Dividing by bandwidth fixes
-     * it because bandwidth is a scenario knob: the same traffic over a 2,000-unit
-     * link and a 10,000-unit link now reports genuinely different latency.
-     */
+    /** Link delay (with degradation) plus the time the window's traffic takes to clear. */
     private double effectiveUplinkLatency() {
         double base = getUplinkLatency();
         double bandwidth = getUplinkBandwidth();
         double bytes = arrivedBytesThisWindow;
         arrivedBytesThisWindow = 0.0;
-
         double transmission = (bandwidth > 0) ? (bytes / bandwidth) : 0.0;
         double busyPenalty = isNorthLinkBusy() ? base * 0.5 : 0.0;
         return base + transmission + busyPenalty;
+    }
+
+    private double handoverWindowSum() {
+        handoverWindow.addLast(handoversThisEpoch);
+        while (handoverWindow.size() > HANDOVER_WINDOW_EPOCHS) handoverWindow.removeFirst();
+        int total = 0;
+        for (Integer h : handoverWindow) total += h;
+        handoversThisEpoch = 0;
+        return total;
+    }
+
+    /**
+     * First-order (lumped RC) thermal model: the enclosure relaxes towards ambient plus a
+     * rise proportional to utilisation plus the extra heat of degraded components, with a
+     * time constant of 2.5 epochs. Returns NaN on devices without a sensor.
+     */
+    private double updateThermalModel(double cpu) {
+        if (!hasThermalSensor) return Double.NaN;
+        double steady = ambientC + thermalRiseC * cpu + RunContext.injector().heatRise(getName());
+        if (Double.isNaN(modelTemperature)) modelTemperature = ambientC;
+        modelTemperature += (steady - modelTemperature) * (1.0 - Math.exp(-1.0 / THERMAL_TAU_EPOCHS));
+        return modelTemperature;
     }
 
     public String getDeviceClass() {
@@ -367,5 +599,9 @@ public class InstrumentedFogDevice extends FogDevice {
 
     public double getEnergyBudget() {
         return energyBudget;
+    }
+
+    public double getBusyPower() {
+        return busyPower;
     }
 }

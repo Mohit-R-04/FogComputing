@@ -1,0 +1,327 @@
+{
+ "method": "tertile",
+ "per_class": false,
+ "n_snapshots": 314323,
+ "global": {
+  "cpu_util": {
+   "cuts": [
+    0.0,
+    0.1016
+   ]
+  },
+  "ram_util": {
+   "cuts": [
+    0.3,
+    0.3
+   ]
+  },
+  "queue_depth": {
+   "cuts": [
+    0.0,
+    21.0
+   ]
+  },
+  "uplink_latency": {
+   "cuts": [
+    100.224,
+    104.84600000000003
+   ]
+  },
+  "jitter_pktloss": {
+   "cuts": [
+    1.0,
+    1.0
+   ]
+  },
+  "handover_rate": {
+   "cuts": [
+    0.0,
+    2.0
+   ]
+  },
+  "residual_energy": {
+   "cuts": [
+    0.8166,
+    0.9149
+   ]
+  },
+  "temperature": {
+   "cuts": [
+    28.97,
+    33.48
+   ]
+  },
+  "cpu_trend": {
+   "cuts": [
+    0.0,
+    0.0
+   ]
+  },
+  "queue_trend": {
+   "cuts": [
+    0.0,
+    0.0
+   ]
+  },
+  "latency_trend": {
+   "cuts": [
+    0.0003,
+    0.0014
+   ]
+  },
+  "temp_trend": {
+   "cuts": [
+    -0.45,
+    0.598
+   ]
+  },
+  "energy_drain": {
+   "cuts": [
+    0.00252,
+    0.00265
+   ]
+  }
+ },
+ "by_device_class": {
+  "cloud": {
+   "cpu_util": {
+    "cuts": [
+     0.07683333333333335,
+     0.10763333333333334
+    ]
+   },
+   "ram_util": {
+    "cuts": [
+     0.0275,
+     0.0325
+    ]
+   },
+   "queue_depth": {
+    "cuts": [
+     343.66666666666674,
+     481.3333333333335
+    ]
+   },
+   "uplink_latency": {
+    "cuts": [
+     3436.6666666666674,
+     4813.333333333335
+    ]
+   },
+   "jitter_pktloss": {
+    "cuts": [
+     1.0,
+     1.0
+    ]
+   },
+   "handover_rate": {
+    "cuts": [
+     0.0,
+     0.0
+    ]
+   },
+   "residual_energy": {
+    "cuts": [
+     0.857,
+     0.9302333333333334
+    ]
+   },
+   "temperature": {
+    "cuts": [
+     20.66,
+     21.53
+    ]
+   },
+   "cpu_trend": {
+    "cuts": [
+     0.0019,
+     0.0047
+    ]
+   },
+   "queue_trend": {
+    "cuts": [
+     0.0176,
+     0.05253333333333335
+    ]
+   },
+   "latency_trend": {
+    "cuts": [
+     0.017666666666666674,
+     0.05253333333333335
+    ]
+   },
+   "temp_trend": {
+    "cuts": [
+     -0.385,
+     0.4793333333333344
+    ]
+   },
+   "energy_drain": {
+    "cuts": [
+     0.00213,
+     0.00217
+    ]
+   }
+  },
+  "edge": {
+   "cpu_util": {
+    "cuts": [
+     0.105,
+     0.2068
+    ]
+   },
+   "ram_util": {
+    "cuts": [
+     0.01,
+     0.01
+    ]
+   },
+   "queue_depth": {
+    "cuts": [
+     31.0,
+     42.0
+    ]
+   },
+   "uplink_latency": {
+    "cuts": [
+     3.108,
+     3.608
+    ]
+   },
+   "jitter_pktloss": {
+    "cuts": [
+     1.0,
+     1.0
+    ]
+   },
+   "handover_rate": {
+    "cuts": [
+     1.0,
+     3.0
+    ]
+   },
+   "residual_energy": {
+    "cuts": [
+     0.5055,
+     0.8311
+    ]
+   },
+   "temperature": {
+    "cuts": [
+     0.0,
+     0.0
+    ]
+   },
+   "cpu_trend": {
+    "cuts": [
+     0.0002,
+     0.0013
+    ]
+   },
+   "queue_trend": {
+    "cuts": [
+     -0.069,
+     0.0789
+    ]
+   },
+   "latency_trend": {
+    "cuts": [
+     -0.0244,
+     0.033
+    ]
+   },
+   "temp_trend": {
+    "cuts": [
+     0.0,
+     0.0
+    ]
+   },
+   "energy_drain": {
+    "cuts": [
+     0.00956,
+     0.00992
+    ]
+   }
+  },
+  "fog": {
+   "cpu_util": {
+    "cuts": [
+     0.0,
+     0.0
+    ]
+   },
+   "ram_util": {
+    "cuts": [
+     0.3,
+     0.45
+    ]
+   },
+   "queue_depth": {
+    "cuts": [
+     0.0,
+     4.0
+    ]
+   },
+   "uplink_latency": {
+    "cuts": [
+     101.503,
+     108.334
+    ]
+   },
+   "jitter_pktloss": {
+    "cuts": [
+     0.0,
+     1.0
+    ]
+   },
+   "handover_rate": {
+    "cuts": [
+     0.0,
+     0.0
+    ]
+   },
+   "residual_energy": {
+    "cuts": [
+     0.8446,
+     0.926
+    ]
+   },
+   "temperature": {
+    "cuts": [
+     29.06,
+     33.52
+    ]
+   },
+   "cpu_trend": {
+    "cuts": [
+     0.0,
+     0.0
+    ]
+   },
+   "queue_trend": {
+    "cuts": [
+     0.0,
+     0.0
+    ]
+   },
+   "latency_trend": {
+    "cuts": [
+     0.0004,
+     0.0011
+    ]
+   },
+   "temp_trend": {
+    "cuts": [
+     -0.451,
+     0.6
+    ]
+   },
+   "energy_drain": {
+    "cuts": [
+     0.00252,
+     0.00257
+    ]
+   }
+  }
+ }
+}

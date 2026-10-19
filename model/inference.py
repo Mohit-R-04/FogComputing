@@ -28,18 +28,15 @@ over a threshold rule. No imputation happens anywhere in this file.
 from __future__ import annotations
 
 import itertools
+import math
 from dataclasses import dataclass
 
 import numpy as np
 
 from bbn_model import (
     ALL_VARS,
-    EVIDENCE_VARS,
-    PARENTS,
-    TARGET_VAR,
     BayesianNetwork,
     states_of,
-    topological_order,
 )
 
 
@@ -91,16 +88,17 @@ class Factor:
     @classmethod
     def from_cpt(cls, net: BayesianNetwork, var: str) -> "Factor":
         """The factor phi(var, parents(var)) = P(var | parents(var))."""
-        parents = PARENTS[var]
+        parents = net.parents(var)
         variables = parents + (var,)
-        shape = tuple(len(states_of(v)) for v in variables)
+        names = {v: net.states(v) for v in variables}
+        shape = tuple(len(names[v]) for v in variables)
         values = np.zeros(shape)
 
-        parent_spaces = [states_of(p) for p in parents]
+        parent_spaces = [names[p] for p in parents]
         for config in itertools.product(*parent_spaces) if parents else [()]:
-            idx = tuple(states_of(p).index(v) for p, v in zip(parents, config))
+            idx = tuple(names[p].index(v) for p, v in zip(parents, config))
             values[idx] = net.cpt(var)[config]
-        return cls(variables, values)
+        return cls(variables, values, names)
 
     def restrict(self, evidence: dict[str, str]) -> "Factor":
         """Slices out the observed values of any evidence variables in scope."""
@@ -186,35 +184,46 @@ class InferenceResult:
         return head + tail
 
 
-def _validate_evidence(evidence: dict[str, str]) -> None:
+def _validate_evidence(net: BayesianNetwork, evidence: dict[str, str]) -> None:
+    target = net.structure.target
     for var, value in evidence.items():
-        if var not in ALL_VARS:
+        if var not in net.variables:
             raise KeyError(f"{var} is not a variable of this network")
-        if var == TARGET_VAR:
+        if var == target:
             raise ValueError("the target cannot be given as evidence")
-        if value not in states_of(var):
-            raise ValueError(f"{value!r} is not a state of {var}; expected {states_of(var)}")
+        if value not in net.states(var):
+            raise ValueError(f"{value!r} is not a state of {var}; expected {net.states(var)}")
 
 
 def variable_elimination(net: BayesianNetwork, evidence: dict[str, str],
-                         query: str = TARGET_VAR) -> np.ndarray:
-    """Posterior over `query` given `evidence`, by variable elimination.
+                         query: str | None = None) -> np.ndarray:
+    """Posterior over `query` (default: the target) given `evidence`, by variable elimination.
 
-    Returns a probability vector over ``states_of(query)``.
+    Returns a probability vector over the query's states.
     """
-    _validate_evidence(evidence)
+    query = query or net.structure.target
+    _validate_evidence(net, evidence)
 
-    factors = [Factor.from_cpt(net, v).restrict(evidence) for v in ALL_VARS]
+    factors = [Factor.from_cpt(net, v).restrict(evidence) for v in net.variables]
 
-    # Eliminate everything that is neither queried nor observed. Ordering by the
-    # size of the factor a variable appears in is a cheap, effective heuristic;
-    # on a graph this small any valid order is fast, but a sensible one keeps the
-    # intermediate arrays small.
-    to_eliminate = [v for v in topological_order()
-                    if v != query and v not in evidence]
-    to_eliminate.sort(key=lambda v: len(PARENTS[v]))
+    # Eliminate everything that is neither queried nor observed, greedily choosing the
+    # variable whose elimination builds the smallest factor (min-weight). A fixed order
+    # by number of parents was used before; it eliminates an unobserved device class
+    # first, and since the class is a parent of every channel and condition in the
+    # trained network, that multiplied the whole network into one table.
+    remaining = [v for v in net.structure.topological_order()
+                 if v != query and v not in evidence]
 
-    for var in to_eliminate:
+    def weight(var: str) -> int:
+        sizes: dict[str, int] = {}
+        for f in factors:
+            if var in f.variables:
+                sizes.update(zip(f.variables, f.values.shape))
+        return math.prod(sizes.values()) if sizes else 0
+
+    while remaining:
+        var = min(remaining, key=weight)
+        remaining.remove(var)
         involved = [f for f in factors if var in f.variables]
         if not involved:
             continue
@@ -237,29 +246,30 @@ def variable_elimination(net: BayesianNetwork, evidence: dict[str, str],
 
 
 def enumerate_posterior(net: BayesianNetwork, evidence: dict[str, str],
-                        query: str = TARGET_VAR) -> np.ndarray:
+                        query: str | None = None) -> np.ndarray:
     """Posterior over `query`, computed by direct enumeration of Eq. (1).
 
     Kept as the correctness oracle for `variable_elimination`, and as a literal
     transcription of the equation as the paper writes it. Exponential in the number
     of unobserved variables, so it is not the production path.
     """
-    _validate_evidence(evidence)
+    query = query or net.structure.target
+    _validate_evidence(net, evidence)
 
-    hidden = [v for v in ALL_VARS if v != query and v not in evidence]
-    totals = np.zeros(len(states_of(query)))
+    hidden = [v for v in net.variables if v != query and v not in evidence]
+    totals = np.zeros(len(net.states(query)))
 
-    for qi, q_value in enumerate(states_of(query)):
+    for qi, q_value in enumerate(net.states(query)):
         acc = 0.0
-        for assignment in itertools.product(*[states_of(v) for v in hidden]):
+        for assignment in itertools.product(*[net.states(v) for v in hidden]):
             world = dict(evidence)
             world[query] = q_value
             world.update(dict(zip(hidden, assignment)))
 
-            # prod_V P(V | pa(V)) over all fourteen variables
+            # prod_V P(V | pa(V)) over every variable
             joint = 1.0
-            for var in ALL_VARS:
-                parent_values = tuple(world[p] for p in PARENTS[var])
+            for var in net.variables:
+                parent_values = tuple(world[p] for p in net.parents(var))
                 joint *= net.probability(var, world[var], parent_values)
                 if joint == 0.0:
                     break
@@ -286,11 +296,18 @@ def infer(net: BayesianNetwork, evidence: dict[str, str]) -> InferenceResult:
     a bare-posterior ranking duly named thermal stress as the principal cause of a
     node with nothing wrong with it. Ranking by lift above the prior cannot do that:
     an unobserved condition has zero lift and is never named.
+
+    The prior is taken for the node's own device class (the reliability prior is part
+    of the evidence it is conditioned on). In a network whose latent conditions depend
+    on the class, a prior pooled over classes would hand some conditions a lift before
+    any telemetry is read -- thermal stress on an edge device, which has no thermal
+    sensor, for one.
     """
     from cpt_tables import TARGET_WEIGHTS
 
-    posterior = variable_elimination(net, evidence, TARGET_VAR)
-    p_fail = float(posterior[states_of(TARGET_VAR).index("fail")])
+    target = net.structure.target
+    posterior = variable_elimination(net, evidence, target)
+    p_fail = float(posterior[net.states(target).index("fail")])
 
     # A lift has to clear floating-point noise to count as the evidence saying
     # something; otherwise an unobserved condition wins on a 1e-17 rounding error.
@@ -298,15 +315,16 @@ def infer(net: BayesianNetwork, evidence: dict[str, str]) -> InferenceResult:
 
     latent_posteriors: dict[str, dict[str, float]] = {}
     best_cause, best_score, best_strength, best_lift = "none", lift_epsilon, 0.0, 0.0
+    prior_var = net.structure.prior
+    class_evidence = {prior_var: evidence[prior_var]} if prior_var in evidence else {}
 
-    for latent in ("computational_stress", "network_degradation",
-                   "energy_stress", "thermal_stress"):
+    for latent in net.structure.latent:
         dist = variable_elimination(net, evidence, latent)
         latent_posteriors[latent] = {
-            state: float(p) for state, p in zip(states_of(latent), dist)
+            state: float(p) for state, p in zip(net.states(latent), dist)
         }
-        prior = variable_elimination(net, {}, latent)
-        prior_high = float(prior[states_of(latent).index("high")])
+        prior = variable_elimination(net, class_evidence, latent)
+        prior_high = float(prior[net.states(latent).index("high")])
 
         p_high = latent_posteriors[latent]["high"]
         lift = p_high - prior_high
@@ -315,7 +333,7 @@ def infer(net: BayesianNetwork, evidence: dict[str, str]) -> InferenceResult:
             best_cause, best_score = latent, score
             best_strength, best_lift = p_high, lift
 
-    marginalised = tuple(v for v in EVIDENCE_VARS if v not in evidence)
+    marginalised = tuple(v for v in net.structure.evidence if v not in evidence)
 
     return InferenceResult(
         p_fail=p_fail,
